@@ -20,7 +20,7 @@ app.use(clerkMiddleware());
 
 // api routes
 app.get("/",(req,res)=>{
-    res.send("server is live");
+    res.send("server is live with moves");
 });
 
 app.use("/api/user",serve({ client: inngest, functions }));
