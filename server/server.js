@@ -23,7 +23,7 @@ app.get("/",(req,res)=>{
     res.send("server is live with moves");
 });
 
-app.use("/api/user",serve({ client: inngest, functions }));
+app.use("/api/inngest",serve({ client: inngest, functions }));
 
 app.listen(port,()=>{
     console.log(`server is listening at http://localhost:${port}`);
