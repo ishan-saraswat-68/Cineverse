@@ -93,14 +93,17 @@ const MovieDetails = () => {
                         </p>
 
                         <div className='flex items-center flex-wrap gap-4 mt-4'>
-                            <button
+                            <a
+                                href={show.movie.trailer || show.movie.videoUrl || 'https://www.youtube.com/watch?v=WpW36ldAqnM'}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className='flex items-center gap-2 px-6 py-3 text-sm
                                 bg-white/10 hover:bg-white/20 border border-white/10 transition rounded-full
                                 font-semibold cursor-pointer active:scale-95 text-white'
                             >
                                 <PlayCircleIcon className='w-5 h-5 text-accent' />
                                 Watch Trailer
-                            </button>
+                            </a>
 
                             <a href='#dateSelect' className='px-10 py-3 text-sm bg-primary hover:bg-primary-dull transition rounded-md font-medium cursor-pointer active:scale-95'>
                                 Book Now

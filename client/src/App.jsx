@@ -7,8 +7,15 @@ import MovieDetails from "./pages/MovieDetails";
 import SeatLayout from "./pages/SeatLayout";
 import Favourite from "./pages/Favourite";
 import MyBookings from "./pages/MyBookings";
+import BookingConfirmation from "./components/BookingConfirmation";
 import {Routes,Route, useLocation} from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import Layout from './pages/admin/Layout';
+import Dashboard from './pages/admin/Dashboard';
+import ListShows from './pages/admin/ListShows';
+import AddShows from './pages/admin/AddShows';
+import ListBookings from './pages/admin/ListBookings';
+
 
 
 
@@ -24,9 +31,16 @@ function App() {
       <Route path="/" element={<Home/>}/>
       <Route path="/movies" element={<Movies/>}/>
       <Route path="/movies/:id" element={<MovieDetails/>}/>
-      <Route path="/movie/:id/:date" element={<SeatLayout/>}/>
+      <Route path="/seat-layout/:showId" element={<SeatLayout/>}/>
       <Route path="/favorite" element={<Favourite/>}/>
-      <Route path="/my-bookings" element={<MyBookings/>}/>  
+      <Route path="/my-bookings" element={<MyBookings/>}/> 
+      <Route path="/booking-confirmation" element={<BookingConfirmation/>}/>
+      <Route path='/admin/*' element={<Layout/>}>
+        <Route index element={<Dashboard/>}/>
+        <Route path='list-shows' element={<ListShows/>}/>
+        <Route path='add-shows' element={<AddShows/>}/>
+        <Route path='list-bookings' element={<ListBookings/>}/>
+      </Route>
     </Routes>
     {!isAdminRoute && <Footer/>}
     </>

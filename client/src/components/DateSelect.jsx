@@ -1,21 +1,13 @@
 import React, { useState } from 'react'
 import BlurCircle from './BlurCircle'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import toast from 'react-hot-toast';
+import { ChevronLeftIcon, ChevronRightIcon, ClockIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom';
+import isoTimeFormat from '../lib/isoTimeFormat.js';
 
 const DateSelect = ({dateTime, id}) => {
 
     const [selected, setSelected] = useState(null);
     const navigate = useNavigate();
-
-    const onBookHandler = () => {
-        if(!selected){
-            return toast('Please select a date');
-        }
-        navigate(`/movie/${id}/${selected}`);
-        scroll(0,0);
-    }
 
     return (
         <div id='dateSelect' className='pt-30'>
@@ -37,8 +29,36 @@ const DateSelect = ({dateTime, id}) => {
                         <ChevronRightIcon width={28}/>
                     </div>
                 </div>
-                <button onClick={onBookHandler} className='bg-primary text-white px-8 py-2 mt-6 rounded hover:bg-primary/90 transition-all cursor-pointer'>Book Now</button>
             </div>
+
+            {/* NEW: Cinema & Timing Selection */}
+            {selected && (
+                <div className='mt-10 p-8 bg-black/20 border border-white/5 rounded-lg'>
+                    <p className='text-lg font-semibold mb-6'>Available Cinemas</p>
+                    <div className='flex flex-col gap-8'>
+                        {dateTime[selected].map((cinema) => (
+                            <div key={cinema.cinemaId} className='space-y-4'>
+                                <p className='text-md font-medium text-gray-200'>{cinema.cinemaName}</p>
+                                <div className='flex flex-wrap gap-4'>
+                                    {cinema.timings.map((item) => (
+                                        <button 
+                                            key={item.time} 
+                                            onClick={() => {
+                                                navigate(`/seat-layout/${item.showId}`);
+                                                window.scrollTo(0, 0);
+                                            }} 
+                                            className='flex items-center gap-2 px-6 py-2 rounded-md border border-primary/40 hover:bg-primary/20 transition cursor-pointer text-sm text-gray-300'
+                                        >
+                                            <ClockIcon className="w-4 h-4" />
+                                            {isoTimeFormat(item.time)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

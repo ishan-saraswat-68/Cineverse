@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { dummyBookingData } from '../assets/assets.js'
 import Loading from '../components/Loading.jsx'
 import BlurCircle from '../components/BlurCircle.jsx'
@@ -7,6 +8,7 @@ import { dateFormat } from '../lib/DateFormat.js';
 
 const MyBookings = () => {
     const currency = import.meta.env.VITE_CURRENCY
+    const navigate = useNavigate()
 
     const [bookings, setBookings] = useState([])
     const [isLoading, setIsLoading] = useState(true)
@@ -32,7 +34,7 @@ const MyBookings = () => {
             {bookings.map((item, index) => (
                 <div
                     key={index}
-                    className='flex flex-col md:flex-row justify-between bg-primary/8 border border-primary/20 rounded-lg mt-4 p-2 max-w-3xl'
+                    className='relative z-10 flex flex-col md:flex-row justify-between bg-primary/8 border border-primary/20 rounded-lg mt-4 p-2 max-w-3xl'
                 >
                     <div className='flex flex-col md:flex-row'>
                         <img
@@ -76,6 +78,17 @@ const MyBookings = () => {
                                 {item.bookedSeats.join(", ")}
                             </p>
                         </div>
+
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault()
+                                navigate('/booking-confirmation', { state: { booking: item } })
+                                window.scrollTo(0, 0)
+                            }}
+                            className='inline-block mt-3 bg-white/5 border border-primary/30 text-primary px-5 py-1.5 text-sm rounded-full font-medium hover:bg-primary hover:text-white transition-colors duration-300'
+                        >
+                            View Ticket
+                        </button>
                     </div>
                 </div>
             ))}
