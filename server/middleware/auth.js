@@ -1,22 +1,24 @@
 import { clerkClient } from "@clerk/express";
-import { response } from "express";
 
-export const protectAdmin = async (req,res,next)=>{
+export const protectAdmin = async (req, res, next) => {
     try {
-        const {userId} = req.auth;
+        const { userId } = req.auth();
 
-        const user = await clerkClient.users.getUser(userId);
-        
-        // checking if the user is admin
-        if(user.privateMetadata.role !== 'admin'){
-            return response.json({success:false,message:'Only admin can add shows'})
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
-        else{
+        const user = await clerkClient.users.getUser(userId);
+
+        // checking if the user is admin
+        if (user.privateMetadata?.role !== 'admin') {
+            return res.json({ success: false, message: 'Only admin can add shows' })
+        }
+        else {
             next();
         }
     }
-    catch(error){
+    catch (error) {
         console.error(error);
-        res.status(500).json({message:error.message});
+        res.status(500).json({ message: error.message });
     }
 }
