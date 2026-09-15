@@ -2,10 +2,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { FaStar, FaClock } from 'react-icons/fa';
 import timeFormat from '../lib/timeFormat';
+import { useAppContext } from '../context/AppContext';
 
 export default function MovieCard({ movie }) {
+  const {image_base_url} = useAppContext()
   const rating = movie.vote_average ?? movie.rating ?? 0;
-  const imageSrc = movie.poster_path || movie.backdrop_path || movie.poster;
+  const imageSrc = image_base_url + movie.backdrop_path;
   const formattedDuration = movie.runtime ? timeFormat(movie.runtime) : (movie.duration ? `${movie.duration}m` : '');
   const genre = movie.genres?.[0]?.name || movie.genre?.[0] || (typeof movie.genre === 'string' ? movie.genre : '');
   const languages = Array.isArray(movie.language) 

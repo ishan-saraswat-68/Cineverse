@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { assets } from '../assets/assets.js'
 import { MenuIcon, SearchIcon, TicketPlus, XIcon } from 'lucide-react'
 import { useClerk, UserButton, useUser } from '@clerk/react'
+import { useAppContext } from '../context/AppContext.jsx'
 
 const Navbar = () => {
 
@@ -12,6 +13,8 @@ const Navbar = () => {
   const {openSignIn} = useClerk();
 
   const navigate = useNavigate();
+
+  const {favouriteMovies} = useAppContext()
 
 
   return (
@@ -25,7 +28,7 @@ const Navbar = () => {
         <Link onClick={() => { scrollTo(0, 0); setIsOpen(false); }} to='/movies'>Movies</Link>
         <Link onClick={() => { scrollTo(0, 0); setIsOpen(false); }} to='/'>Theaters</Link>
         <Link onClick={() => { scrollTo(0, 0); setIsOpen(false); }} to='/'>Releases</Link>
-        <Link onClick={() => { scrollTo(0, 0); setIsOpen(false); }} to='/favorite'>Favorites</Link>
+        {favouriteMovies.length >0 && <Link onClick={() => { scrollTo(0, 0); setIsOpen(false); }} to='/favorite'>Favorites</Link>}
       </div>
       <div className='flex items-center gap-6'>
         <SearchIcon className='max-md:hidden w-6 h-6 cursor-pointer text-white hover:text-primary transition' />
