@@ -15,6 +15,7 @@ import Dashboard from './pages/admin/Dashboard';
 import ListShows from './pages/admin/ListShows';
 import AddShows from './pages/admin/AddShows';
 import ListBookings from './pages/admin/ListBookings';
+import Theatres from './pages/admin/Theatres';
 import { useAppContext } from './context/AppContext';
 import { SignIn } from '@clerk/react';
 
@@ -43,6 +44,7 @@ function App() {
         </div>
       )}>
         <Route index element={<Dashboard/>}/>
+        <Route path='theatres' element={<Theatres/>}/>
         <Route path='list-shows' element={<ListShows/>}/>
         <Route path='add-shows' element={<AddShows/>}/>
         <Route path='list-bookings' element={<ListBookings/>}/>

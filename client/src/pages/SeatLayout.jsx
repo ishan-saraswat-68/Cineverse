@@ -1,149 +1,292 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading.jsx'
-import { dummyShowsData, dummyDateTimeData, assets } from '../assets/assets'
-import { ArrowRightIcon } from 'lucide-react'
+import { assets } from '../assets/assets'
+import { ArrowRightIcon, Armchair, Receipt } from 'lucide-react'
 import BlurCircle from '../components/BlurCircle.jsx'
 import toast from 'react-hot-toast'
+import { useAppContext } from '../context/AppContext'
 
 const SeatLayout = () => {
+  const { showId } = useParams()
+  const navigate = useNavigate()
+  const { axios, image_base_url } = useAppContext()
 
-  const groupRows = [["A","B"],["C","D"],["E","F"],["G","H"],["I","J"],["K"]];
-  const { showId } = useParams(); // Using the new URL param
   const [selectedSeats, setSelectedSeats] = useState([])
   const [show, setShow] = useState(null)
-
-  const navigate = useNavigate()
+  const [loading, setLoading] = useState(true)
 
   const getShow = async () => {
-    // In dummy data mode, we find the specific show by its showId
-    let foundShow = null;
-    let foundDate = null;
-    let foundCinema = null;
-
-    Object.entries(dummyDateTimeData).forEach(([date, cinemas]) => {
-      cinemas.forEach(cinema => {
-        const timeSlot = cinema.timings.find(t => t.showId === showId);
-        if (timeSlot) {
-          foundShow = timeSlot;
-          foundDate = date;
-          foundCinema = cinema;
-        }
-      });
-    });
-
-    if (foundShow) {
-      setShow({
-        movie: dummyShowsData[0], // In a real app, this comes from the backend payload
-        timeSlot: foundShow,
-        cinema: foundCinema,
-        date: foundDate
-      })
+    try {
+      const { data } = await axios.get(`/api/show/single/${showId}`)
+      if (data.success && data.show) {
+        setShow(data.show)
+      } else {
+        toast.error('Show not found')
+      }
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to load show details')
+    } finally {
+      setLoading(false)
     }
   }
 
-  const renderSeats = (row, count = 9) => (
-    <div key={row} className="flex gap-4 mt-4">
-      <div className="flex flex-nowrap items-center justify-center gap-3">
-        {Array.from({ length: count }, (_, i) => {
-          const seatId = `${row}${i + 1}`;
-          return (
-            <button
-              key={seatId}
-              onClick={() => handleSeatClick(seatId)}
-              className={`h-9 w-9 rounded-md border border-primary/60 cursor-pointer flex items-center justify-center transition-colors ${selectedSeats.includes(seatId) &&
-                "bg-primary text-white"
-                }`}
-            >
-              {seatId}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  )
+  useEffect(() => {
+    getShow()
+  }, [showId])
 
   const handleSeatClick = (seatId) => {
-    if (!selectedSeats.includes(seatId) && selectedSeats.length > 4) {
-      return toast.error("You can only select 4 seats at a time")
+    // Check if seat is occupied
+    if (show?.occupiedSeats && show.occupiedSeats[seatId]) {
+      return toast.error('This seat is already booked')
     }
-    setSelectedSeats(prev =>
-      prev.includes(seatId) ? prev.filter(id => id !== seatId) : [...prev, seatId]
+
+    if (!selectedSeats.includes(seatId) && selectedSeats.length >= 4) {
+      return toast.error('You can only select up to 4 seats at a time')
+    }
+
+    setSelectedSeats((prev) =>
+      prev.includes(seatId) ? prev.filter((id) => id !== seatId) : [...prev, seatId]
     )
   }
 
-  const handleProceed = () => {
-    if(selectedSeats.length === 0){
-      return toast.error("Please select seats first")
+  const getSeatPrice = (seatId) => {
+    const rowLetter = seatId.replace(/[0-9]/g, '');
+    const section = show?.theatre?.seatingSections?.find(sec => sec.rowLetters?.includes(rowLetter));
+    if (section && show?.sectionPrices && show.sectionPrices[section.name]) {
+      return show.sectionPrices[section.name];
     }
-    navigate(`/my-bookings`)
+    return show?.showPrice || 0;
+  };
+
+  const totalPrice = selectedSeats.reduce((sum, seatId) => sum + getSeatPrice(seatId), 0);
+
+  const getSectionBreakdown = () => {
+    const breakdown = {};
+    selectedSeats.forEach((seatId) => {
+      const rowLetter = seatId.replace(/[0-9]/g, '');
+      const section = show?.theatre?.seatingSections?.find((sec) => sec.rowLetters?.includes(rowLetter));
+      const sectionName = section?.name || 'Standard';
+      const price = (section && show?.sectionPrices && show.sectionPrices[section.name]) || show?.showPrice || 0;
+
+      if (!breakdown[sectionName]) {
+        breakdown[sectionName] = { name: sectionName, count: 0, price };
+      }
+      breakdown[sectionName].count += 1;
+    });
+    return Object.values(breakdown);
+  };
+
+  const handleProceed = () => {
+    if (selectedSeats.length === 0) {
+      return toast.error('Please select seats first')
+    }
+    navigate('/my-bookings', {
+      state: { showId, selectedSeats, showPrice: show.showPrice, totalPrice }
+    })
   }
-  
-  useEffect(() => {
-    getShow()
-  }, [])
 
-  return show ? (
-    <div className='flex flex-col md:flex-row px-6 md:px-16 lg:px-40 py-30 md:pt-50 justify-center'>
+  if (loading) return <Loading />
+  if (!show) return null
 
-      {/* Seats Layout (Centered) */}
-      <div className='relative flex flex-col items-center max-md:mt-16 w-full max-w-5xl'>
-        <BlurCircle top="-100px" left="-100px" />
-        <BlurCircle bottom="0" right="0" />
-        
-        {/* Dynamic Cinema Header Card */}
-        <div className='mb-12 w-full bg-primary/5 rounded-3xl border border-primary/20 p-4 md:p-6 flex flex-col md:flex-row items-center gap-6 md:gap-8'>
-            
-            {/* Movie Poster */}
-            <img src={show.movie.poster_path} alt={show.movie.title} className='w-24 md:w-28 rounded-xl object-cover shadow-lg border border-white/10' />
-            
-            {/* Middle Section */}
-            <div className='flex flex-col items-center md:items-start flex-1 w-full'>
-                <h1 className='text-3xl md:text-3xl font-bold text-white mb-4'>
-                    {show.movie.title}
-                </h1>
-                
-                {/* Badges */}
-                <div className='flex flex-wrap items-center justify-center md:justify-start gap-3'>
-                    <div className='bg-white/5 border border-white/10 px-5 py-2 rounded-full text-gray-300 text-sm font-medium'>
-                        {show.cinema.cinemaName}
-                    </div>
-                    <div className='bg-white/5 border border-white/10 px-5 py-2 rounded-full text-primary text-sm font-semibold'>
-                        {new Date(show.date).toLocaleDateString("en-US", {weekday: 'short', month: 'short', day: 'numeric'})}
-                    </div>
-                    <div className='bg-white/5 border border-white/10 px-5 py-2 rounded-full text-gray-300 text-sm font-semibold'>
-                        {new Date(show.timeSlot.time).toLocaleTimeString("en-US", {hour: '2-digit', minute:'2-digit', hour12: false})}
-                    </div>
-                </div>
+  return (
+    <div className='px-4 md:px-10 lg:px-16 py-28 md:pt-36 max-w-7xl mx-auto min-h-screen'>
+      {/* Cinema & Movie Header Card */}
+      <div className='mb-10 w-full bg-primary/5 rounded-3xl border border-primary/20 p-4 md:p-6 flex flex-col md:flex-row items-center gap-6 md:gap-8'>
+        <img
+          src={image_base_url + show.movie.poster_path}
+          alt={show.movie.title}
+          className='w-24 md:w-28 rounded-xl object-cover shadow-lg border border-white/10'
+        />
+
+        <div className='flex flex-col items-center md:items-start flex-1 w-full'>
+          <h1 className='text-2xl md:text-3xl font-bold text-white mb-3'>
+            {show.movie.title}
+          </h1>
+
+          {/* Badges */}
+          <div className='flex flex-wrap items-center justify-center md:justify-start gap-2.5'>
+            <div className='bg-white/5 border border-white/10 px-4 py-1.5 rounded-full text-gray-300 text-xs md:text-sm font-medium'>
+              {show.theatre?.name || 'Cineverse Multiplex'}
             </div>
+            <div className='bg-white/5 border border-white/10 px-4 py-1.5 rounded-full text-primary text-xs md:text-sm font-semibold'>
+              {new Date(show.showDateTime).toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+              })}
+            </div>
+            <div className='bg-white/5 border border-white/10 px-4 py-1.5 rounded-full text-gray-300 text-xs md:text-sm font-semibold'>
+              {new Date(show.showDateTime).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+              })}
+            </div>
+            <div className='bg-primary/20 border border-primary/30 px-3 py-1.5 rounded-full text-accent text-xs font-semibold'>
+              {show.language} • {show.format}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main 2-Column Section: Left = Price Calculation, Right = Seats Grid */}
+      <div className='flex flex-col lg:flex-row items-start gap-8 lg:gap-12 relative'>
+        <BlurCircle top="-50px" left="-100px" />
+        <BlurCircle bottom="0" right="0" />
+
+        {/* LEFT SIDE: Price Calculation Card */}
+        <div className='w-full lg:w-80 lg:sticky lg:top-28 bg-[#111827] border border-white/10 rounded-2xl p-6 shadow-xl space-y-5 order-2 lg:order-1 flex-shrink-0'>
+          <div className='flex items-center justify-between pb-3 border-b border-white/10'>
+            <h3 className='text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wider'>
+              <Receipt className='w-4 h-4 text-primary' />
+              Price Calculation
+            </h3>
+            <span className='text-xs text-primary font-semibold'>
+              {selectedSeats.length} {selectedSeats.length === 1 ? 'Seat' : 'Seats'}
+            </span>
+          </div>
+
+          {selectedSeats.length > 0 ? (
+            <div className='space-y-4'>
+              {/* Selected Seats Badges */}
+              <div>
+                <p className='text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2'>
+                  Selected Seats
+                </p>
+                <div className='flex flex-wrap gap-2'>
+                  {selectedSeats.map((seatId) => {
+                    const price = getSeatPrice(seatId)
+                    return (
+                      <span
+                        key={seatId}
+                        className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/30 text-primary text-xs font-semibold'
+                      >
+                        {seatId}
+                        <span className='text-gray-400 font-normal'>₹{price}</span>
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Section-wise breakdown */}
+              <div className='pt-3 border-t border-white/5 space-y-2 text-xs text-gray-300'>
+                {getSectionBreakdown().map((item) => (
+                  <div key={item.name} className='flex justify-between items-center'>
+                    <span>
+                      {item.name} ({item.count} × ₹{item.price})
+                    </span>
+                    <span className='font-medium text-white'>
+                      ₹{item.count * item.price}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Total Amount */}
+              <div className='pt-3 border-t border-white/10 flex items-center justify-between'>
+                <span className='text-sm text-gray-300 font-medium'>Total Amount</span>
+                <span className='text-2xl font-bold text-primary'>₹{totalPrice}</span>
+              </div>
+
+              {/* Proceed to Checkout Button */}
+              <button
+                onClick={handleProceed}
+                className='w-full flex items-center justify-center gap-2 py-3 bg-primary hover:bg-primary-dull transition rounded-xl font-semibold cursor-pointer active:scale-95 text-white text-sm shadow-neon-primary mt-2'
+              >
+                Proceed To CheckOut
+                <ArrowRightIcon strokeWidth={2.5} className='w-4 h-4' />
+              </button>
+            </div>
+          ) : (
+            <div className='text-center py-6 text-gray-400'>
+              <Armchair className='w-8 h-8 mx-auto text-gray-600 mb-2' />
+              <p className='text-xs'>Select seats from the layout to view price calculation</p>
+
+              {/* Section price guide */}
+              <div className='mt-5 pt-4 border-t border-white/5 text-left space-y-2'>
+                <p className='text-[11px] font-semibold text-gray-500 uppercase tracking-wider'>
+                  Ticket Rates
+                </p>
+                {show.theatre?.seatingSections?.map((sec) => (
+                  <div key={sec.name} className='flex justify-between text-xs text-gray-400'>
+                    <span>{sec.name}</span>
+                    <span className='text-primary font-medium'>
+                      ₹{show.sectionPrices?.[sec.name] || show.showPrice}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        <h2 className='text-xl font-semibold mb-4'>Select your seats</h2>
-        <img src={assets.screenImage} alt="screen" className='w-full opacity-80' />
-        <p className='text-gray-400 text-sm mb-10'>SCREEN SIDE</p>
-        
-        <div className='flex flex-col items-center mt-10 text-xs text-gray-300'>
-          <div className='flex flex-col mb-12'>
-            {groupRows[0].map(row => renderSeats(row))}
-          </div>
-          <div className='grid grid-cols-2 gap-x-20 gap-y-12'>
-            {groupRows.slice(1,5).map((group,index)=>(
-              <div key={index} className='flex flex-col'>
-                {group.map(row => renderSeats(row))}
+        {/* RIGHT SIDE: Seats Matrix & Screen */}
+        <div className='flex-1 w-full flex flex-col items-center order-1 lg:order-2'>
+          <h2 className='text-xl font-semibold mb-6'>Select your seats</h2>
+
+          <div className='w-full flex flex-col items-center gap-10 mt-4'>
+            {show.theatre?.seatingSections?.map((section) => (
+              <div key={section.name} className='w-full flex flex-col items-center'>
+                {/* Section Header */}
+                <div className='flex items-center gap-2 mb-4'>
+                  <Armchair className='w-4 h-4 text-primary' />
+                  <span className='text-xs font-bold text-gray-300 uppercase tracking-widest'>
+                    {section.name} Section
+                  </span>
+                  <span className='text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/20 text-accent border border-primary/30'>
+                    ₹{show.sectionPrices?.[section.name] || show.showPrice}
+                  </span>
+                </div>
+
+                {/* Rows in this section */}
+                <div className='flex flex-col gap-3 items-center overflow-x-auto max-w-full pb-2'>
+                  {section.rowLetters?.map((rowLetter) => (
+                    <div key={rowLetter} className='flex items-center gap-3'>
+                      <span className='w-5 text-right font-medium text-xs text-gray-400'>
+                        {rowLetter}
+                      </span>
+                      <div className='flex gap-2.5'>
+                        {Array.from({ length: section.seatsPerRow }, (_, i) => {
+                          const seatId = `${rowLetter}${i + 1}`
+                          const isOccupied = show.occupiedSeats && show.occupiedSeats[seatId]
+                          const isSelected = selectedSeats.includes(seatId)
+
+                          return (
+                            <button
+                              key={seatId}
+                              disabled={isOccupied}
+                              onClick={() => handleSeatClick(seatId)}
+                              className={`h-8 w-8 md:h-9 md:w-9 rounded-md text-xs font-medium transition-all duration-200 flex items-center justify-center cursor-pointer ${
+                                isOccupied
+                                  ? 'bg-gray-700/40 text-gray-600 border border-gray-700 cursor-not-allowed'
+                                  : isSelected
+                                  ? 'bg-primary text-white shadow-neon-primary scale-105'
+                                  : 'border border-primary/50 text-gray-300 hover:border-primary hover:bg-primary/10'
+                              }`}
+                            >
+                              {seatId}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
-        </div>
-        
-        <button onClick={()=>handleProceed()} className='flex items-center gap-2 mt-20 px-10 py-3 text-sm bg-primary hover:bg-primary-dull transition rounded-full font-medium cursor-pointer active:scale-95 text-white'>
-          Proceed To CheckOut
-          <ArrowRightIcon strokeWidth={3} className='w-4 h-4' />
-        </button>
-      </div>
 
+          {/* Screen Side */}
+          <div className='w-full max-w-2xl mt-12 mb-4 text-center'>
+            <img src={assets.screenImage} alt='screen' className='w-full opacity-80' />
+            <p className='text-gray-400 text-xs tracking-widest mt-2'>SCREEN THIS WAY</p>
+          </div>
+        </div>
+      </div>
     </div>
-  ) : (
-    <Loading />
   )
 }
 

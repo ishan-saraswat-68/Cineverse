@@ -7,11 +7,10 @@ const userRouter = express.Router();
 userRouter.get('/bookings', getUserBookings);
 
 // API route to update user favourites
+userRouter.post('/update-favourite', updateFavouriteMovie);
 userRouter.post('/favourites', updateFavouriteMovie);
 
 // API route to get user favourites
 userRouter.get('/favourites', getFavouriteMovies);
-
-
 
 export default userRouter;

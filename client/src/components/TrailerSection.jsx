@@ -22,6 +22,13 @@ const TrailersSection = () => {
                     src={currentTrailer.videoUrl}
                     url={currentTrailer.videoUrl}
                     controls={true}
+                    config={{
+                        youtube: {
+                            playerVars: {
+                                origin: typeof window !== 'undefined' ? window.location.origin : ''
+                            }
+                        }
+                    }}
                     className="mx-auto max-w-full overflow-hidden rounded-xl"
                     width="960px"
                     height="540px"
