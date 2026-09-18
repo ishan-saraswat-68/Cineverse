@@ -1,6 +1,6 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 
 import connectDB from "./config/db.js";
 import { clerkMiddleware } from '@clerk/express'
@@ -15,15 +15,12 @@ import { stripeWebHooks } from "./controllers/stripeWebHooks.js";
 import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
 
-
-dotenv.config();
-
 const app = express();
 const port = 3000;
 await connectDB();
 
 // Stripe Webhooks Route 
-app.use('/api/stripe',express.raw({type:'application/json'}),stripeWebHooks);
+app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebHooks);
 
 //middleware
 app.use(cors());

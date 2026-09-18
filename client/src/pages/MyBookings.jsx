@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { dummyBookingData } from '../assets/assets.js'
 import Loading from '../components/Loading.jsx'
 import BlurCircle from '../components/BlurCircle.jsx'
@@ -62,7 +62,7 @@ const MyBookings = () => {
                         <div className='flex flex-col p-4'>
                             <p className='text-lg font-semibold'>{item.show.movie.title}</p>
                             <p className='text-gray-400 text-sm'>
-                                {timeFormat(item.show.movie.runtime)}
+                                {timeFormat(item.show.movie.run_time || item.show.movie.runtime)}
                             </p>
                             <p className='text-gray-400 text-sm mt-auto'>
                                 {dateFormat(item.show.showDateTime)}
@@ -76,10 +76,13 @@ const MyBookings = () => {
                                 {currency}{item.amount}
                             </p>
 
-                            {!item.isPaid && (
-                                <button className='bg-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer'>
+                            {!item.isPaid && item.paymentLink && (
+                                <Link
+                                    to={item.paymentLink}
+                                    className='bg-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer'
+                                >
                                     Pay Now
-                                </button>
+                                </Link>
                             )}
                         </div>
 
