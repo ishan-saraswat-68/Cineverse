@@ -1,6 +1,8 @@
 import { Inngest } from "inngest";
 import User from "../models/User.js";
 import Booking from "../models/booking.js";
+import Show from "../models/show.js";
+import Movie from "../models/movie.js";
 import sendEmail from "../config/nodemailer.js";
 import { clerkClient } from "@clerk/express";
 
@@ -68,24 +70,40 @@ const sendBookingConfirmationEmail = inngest.createFunction(
         const booking = await Booking.findById(bookingId).populate({
             path: 'show',
             populate: { path: "movie", model: "Movie" }
-        }).populate('user');
+        });
 
         if (!booking) {
             console.error("Booking not found for Inngest event:", bookingId);
             return;
         }
 
-        // Get recipient email & name from MongoDB User or directly from Clerk
-        let userEmail = booking.user?.email;
-        let userName = booking.user?.name;
+        // Safely extract Clerk userId without losing it to a null populate
+        const userId = (typeof booking.user === 'string' ? booking.user : booking.user?._id) || event.data?.userId;
 
-        if (!userEmail) {
+        let userEmail = null;
+        let userName = 'Movie Lover';
+
+        // 1. Check MongoDB User collection first
+        if (userId) {
             try {
-                const clerkUser = await clerkClient.users.getUser(booking.user || event.data.userId);
+                const dbUser = await User.findById(userId);
+                if (dbUser) {
+                    userEmail = dbUser.email;
+                    userName = dbUser.name || 'Movie Lover';
+                }
+            } catch (err) {
+                console.warn("MongoDB user lookup error:", err.message);
+            }
+        }
+
+        // 2. Fetch directly from Clerk if user is not in MongoDB
+        if (!userEmail && userId) {
+            try {
+                const clerkUser = await clerkClient.users.getUser(userId);
                 userEmail = clerkUser.emailAddresses?.[0]?.emailAddress;
                 userName = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'Movie Lover';
 
-                // Automatically save the user to MongoDB for future queries
+                // Automatically save user to MongoDB for future queries
                 if (clerkUser.id && userEmail) {
                     await User.findByIdAndUpdate(
                         clerkUser.id,

@@ -105,7 +105,8 @@ export const createBooking = async (req, res) => {
       success_url: `${origin}/loading/my-bookings`,
       cancel_url: `${origin}/my-bookings`,
       metadata: {
-        bookingId: booking._id.toString()
+        bookingId: booking._id.toString(),
+        userId: userId,
       },
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60 //expires in 30 minutes
     });
