@@ -164,10 +164,10 @@ const sendBookingConfirmationEmail = inngest.createFunction(
         const theatreAddress = [theatre.address, theatre.city].filter(Boolean).join(', ') || 'Main Screen';
         const formatBadge = [show.format || '2D', show.language || 'English'].join(' • ');
         const seatsHtml = (booking.bookedSeats || []).map(seat => `
-            <span style="display:inline-block; background-color: #f43f5e; color: #ffffff; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 13px; margin: 2px 4px 2px 0;">${seat}</span>
+            <span style="display:inline-block; background: linear-gradient(135deg, #22d3ee 0%, #0284c7 100%); color: #0b0f1a; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 13px; margin: 2px 4px 2px 0;">${seat}</span>
         `).join('');
 
-        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${booking._id}&color=0f172a&bgcolor=f8fafc`;
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${booking._id}&color=22d3ee&bgcolor=0e1726`;
 
         const ticketHtml = `
         <!DOCTYPE html>
@@ -177,23 +177,23 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Your Movie Ticket - Cineverse</title>
         </head>
-        <body style="margin: 0; padding: 24px 10px; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
+        <body style="margin: 0; padding: 24px 10px; background-color: #0b0f1a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                     <td align="center">
                         <!-- Main Card -->
-                        <table role="presentation" width="100%" style="max-width: 540px; background-color: #131b2e; border: 1px solid #1e293b; border-radius: 20px; overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.5);" cellpadding="0" cellspacing="0" border="0">
+                        <table role="presentation" width="100%" style="max-width: 540px; background-color: #111827; border: 1px solid rgba(34, 211, 238, 0.25); border-radius: 20px; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6), 0 0 24px rgba(6, 182, 212, 0.12);" cellpadding="0" cellspacing="0" border="0">
                             
                             <!-- Header Logo & Status Banner -->
                             <tr>
-                                <td style="padding: 22px 28px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-bottom: 1px solid #283548;">
+                                <td style="padding: 22px 28px; background: linear-gradient(135deg, #0f172a 0%, #082f49 100%); border-bottom: 1px solid rgba(34, 211, 238, 0.2);">
                                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                         <tr>
                                             <td align="left">
-                                                <span style="font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #ffffff;">CINE<span style="color: #f43f5e;">VERSE</span></span>
+                                                <span style="font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #ffffff;">CINE<span style="color: #22d3ee;">VERSE</span></span>
                                             </td>
                                             <td align="right">
-                                                <span style="display: inline-block; background-color: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                <span style="display: inline-block; background-color: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid #06b6d4; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
                                                     ● CONFIRMED
                                                 </span>
                                             </td>
@@ -208,17 +208,17 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                         <tr>
                                             <td width="105" valign="top" style="padding-right: 18px;">
-                                                <img src="${posterUrl}" alt="${movie.title}" width="105" height="150" style="display: block; border-radius: 12px; object-fit: cover; border: 1px solid #334155;" />
+                                                <img src="${posterUrl}" alt="${movie.title}" width="105" height="150" style="display: block; border-radius: 12px; object-fit: cover; border: 1px solid rgba(34, 211, 238, 0.2);" />
                                             </td>
                                             <td valign="top">
-                                                <div style="font-size: 12px; font-weight: 600; color: #f43f5e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">
+                                                <div style="font-size: 12px; font-weight: 700; color: #22d3ee; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">
                                                     Movie Ticket
                                                 </div>
                                                 <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 800; color: #ffffff; line-height: 1.3;">
                                                     ${movie.title}
                                                 </h1>
                                                 <div style="margin-bottom: 12px;">
-                                                    <span style="display: inline-block; background-color: #1e293b; color: #cbd5e1; padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 600;">
+                                                    <span style="display: inline-block; background-color: rgba(6, 182, 212, 0.12); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.3); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 600;">
                                                         ${formatBadge}
                                                     </span>
                                                     ${movie.run_time ? `<span style="display: inline-block; background-color: #1e293b; color: #94a3b8; padding: 3px 8px; border-radius: 5px; font-size: 11px; margin-left: 4px;">${Math.floor(movie.run_time / 60)}h ${movie.run_time % 60}m</span>` : ''}
@@ -237,9 +237,9 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                                 <td style="padding: 6px 0;">
                                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                         <tr>
-                                            <td width="16" height="24" style="background-color: #0b0f19; border-top-right-radius: 16px; border-bottom-right-radius: 16px; border-top: 1px solid #1e293b; border-right: 1px solid #1e293b; border-bottom: 1px solid #1e293b;"></td>
-                                            <td style="border-bottom: 2px dashed #2d3b55;"></td>
-                                            <td width="16" height="24" style="background-color: #0b0f19; border-top-left-radius: 16px; border-bottom-left-radius: 16px; border-top: 1px solid #1e293b; border-left: 1px solid #1e293b; border-bottom: 1px solid #1e293b;"></td>
+                                            <td width="16" height="24" style="background-color: #0b0f1a; border-top-right-radius: 16px; border-bottom-right-radius: 16px; border-top: 1px solid rgba(34, 211, 238, 0.25); border-right: 1px solid rgba(34, 211, 238, 0.25); border-bottom: 1px solid rgba(34, 211, 238, 0.25);"></td>
+                                            <td style="border-bottom: 2px dashed #1e293b;"></td>
+                                            <td width="16" height="24" style="background-color: #0b0f1a; border-top-left-radius: 16px; border-bottom-left-radius: 16px; border-top: 1px solid rgba(34, 211, 238, 0.25); border-left: 1px solid rgba(34, 211, 238, 0.25); border-bottom: 1px solid rgba(34, 211, 238, 0.25);"></td>
                                         </tr>
                                     </table>
                                 </td>
@@ -248,7 +248,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                             <!-- Ticket Details Grid -->
                             <tr>
                                 <td style="padding: 16px 28px 24px 28px;">
-                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 18px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0c1322; border: 1px solid #1e293b; border-radius: 14px; padding: 18px;">
                                         <!-- Cinema Hall -->
                                         <tr>
                                             <td colspan="2" style="padding-bottom: 16px; border-bottom: 1px solid #1e293b;">
@@ -298,7 +298,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                                                 <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
                                                     Total Paid
                                                 </div>
-                                                <div style="font-size: 20px; font-weight: 900; color: #10b981;">
+                                                <div style="font-size: 22px; font-weight: 900; color: #22d3ee;">
                                                     ₹${booking.amount}
                                                 </div>
                                             </td>
@@ -310,7 +310,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                             <!-- QR Code & Entry Instructions -->
                             <tr>
                                 <td style="padding: 0 28px 26px 28px;">
-                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #172136; border: 1px dashed #2d3b55; border-radius: 12px; padding: 14px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0e1726; border: 1px dashed rgba(6, 182, 212, 0.4); border-radius: 12px; padding: 14px;">
                                         <tr>
                                             <td width="85" valign="middle" align="center">
                                                 <img src="${qrCodeUrl}" alt="Ticket QR" width="75" height="75" style="display: block; border-radius: 8px;" />
@@ -322,7 +322,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                                                 <div style="font-size: 11px; color: #94a3b8; line-height: 1.4;">
                                                     Scan this QR code or show your booking reference at the cinema turnstile for instant admission.
                                                 </div>
-                                                <div style="font-size: 10px; font-family: monospace; color: #64748b; margin-top: 6px;">
+                                                <div style="font-size: 10px; font-family: monospace; color: #38bdf8; margin-top: 6px;">
                                                     REF: ${booking._id}
                                                 </div>
                                             </td>
@@ -333,9 +333,9 @@ const sendBookingConfirmationEmail = inngest.createFunction(
 
                             <!-- Card Footer -->
                             <tr>
-                                <td align="center" style="padding: 16px 28px; background-color: #0d1320; border-top: 1px solid #1e293b;">
+                                <td align="center" style="padding: 16px 28px; background-color: #0a0f1d; border-top: 1px solid #1e293b;">
                                     <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.5;">
-                                        Have questions? Please reach out to <a href="mailto:ishansaraswat68@gmail.com" style="color: #f43f5e; text-decoration: none;">support@cineverse.com</a><br/>
+                                        Have questions? Please reach out to <a href="mailto:ishansaraswat68@gmail.com" style="color: #22d3ee; text-decoration: none;">support@cineverse.com</a><br/>
                                         &copy; 2026 Cineverse Entertainment Inc. All rights reserved.
                                     </p>
                                 </td>
