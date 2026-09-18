@@ -26,6 +26,7 @@ export const stripeWebHooks = async (req, res) => {
                 const session = event.data.object;
                 const bookingId = session.metadata?.bookingId;
                 const userId = session.metadata?.userId;
+                const customerEmail = session.customer_details?.email || session.customer_email;
                 if (bookingId) {
                     await Booking.findByIdAndUpdate(bookingId, {
                         isPaid: true,
@@ -35,7 +36,7 @@ export const stripeWebHooks = async (req, res) => {
                     // Send Booking Confirmation Email through Inngest
                     await inngest.send({
                         name: 'app/show.booked',
-                        data: { bookingId, userId }
+                        data: { bookingId, userId, customerEmail }
                     });
                     console.log(`✅ Booking ${bookingId} marked as PAID via checkout.session.completed`);
                 }
@@ -51,6 +52,7 @@ export const stripeWebHooks = async (req, res) => {
                 const session = sessionList.data[0];
                 const bookingId = session?.metadata?.bookingId;
                 const userId = session?.metadata?.userId;
+                const customerEmail = session?.customer_details?.email || session?.customer_email;
                 if (bookingId) {
                     await Booking.findByIdAndUpdate(bookingId, {
                         isPaid: true,
@@ -60,7 +62,7 @@ export const stripeWebHooks = async (req, res) => {
                     // Send Booking Confirmation Email through Inngest
                     await inngest.send({
                         name: 'app/show.booked',
-                        data: { bookingId, userId }
+                        data: { bookingId, userId, customerEmail }
                     });
                     console.log(`✅ Booking ${bookingId} marked as PAID via payment_intent.succeeded`);
                 }

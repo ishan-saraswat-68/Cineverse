@@ -80,37 +80,42 @@ const sendBookingConfirmationEmail = inngest.createFunction(
         // Safely extract Clerk userId without losing it to a null populate
         const userId = (typeof booking.user === 'string' ? booking.user : booking.user?._id) || event.data?.userId;
 
-        let userEmail = null;
+        const recipientEmails = new Set();
+        if (event.data?.customerEmail) recipientEmails.add(event.data.customerEmail);
+
         let userName = 'Movie Lover';
 
         // 1. Check MongoDB User collection first
         if (userId) {
             try {
                 const dbUser = await User.findById(userId);
-                if (dbUser) {
-                    userEmail = dbUser.email;
-                    userName = dbUser.name || 'Movie Lover';
+                if (dbUser?.email) {
+                    recipientEmails.add(dbUser.email);
+                    if (dbUser.name) userName = dbUser.name;
                 }
             } catch (err) {
                 console.warn("MongoDB user lookup error:", err.message);
             }
         }
 
-        // 2. Fetch directly from Clerk if user is not in MongoDB
-        if (!userEmail && userId) {
+        // 2. Fetch directly from Clerk
+        if (userId) {
             try {
                 const clerkUser = await clerkClient.users.getUser(userId);
-                userEmail = clerkUser.emailAddresses?.[0]?.emailAddress;
-                userName = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'Movie Lover';
+                const clerkEmail = clerkUser.emailAddresses?.[0]?.emailAddress;
+                if (clerkEmail) recipientEmails.add(clerkEmail);
+                if (clerkUser.firstName || clerkUser.lastName) {
+                    userName = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim();
+                }
 
                 // Automatically save user to MongoDB for future queries
-                if (clerkUser.id && userEmail) {
+                if (clerkUser.id && clerkEmail) {
                     await User.findByIdAndUpdate(
                         clerkUser.id,
                         {
                             _id: clerkUser.id,
                             name: userName,
-                            email: userEmail,
+                            email: clerkEmail,
                             image: clerkUser.imageUrl || ''
                         },
                         { upsert: true, new: true }
@@ -121,13 +126,15 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             }
         }
 
-        if (!userEmail) {
+        if (recipientEmails.size === 0) {
             console.error("No recipient email found for booking:", bookingId);
             return;
         }
 
+        const emailList = Array.from(recipientEmails).join(', ');
+
         await sendEmail({
-            to: userEmail,
+            to: emailList,
             subject: `Payment Confirmation : "${booking.show.movie.title}" Booked!`,
             body: `
             <div style="font-family: Arial, sans-serif; line-height: 1.5;">
@@ -153,7 +160,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             </div>
             `
         });
-        console.log(`✅ Inngest email sent to: ${userEmail}`);
+        console.log(`✅ Inngest email sent to: ${emailList}`);
     }
 );
 
