@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Booking from "../models/booking.js";
 import Show from "../models/show.js";
 import Movie from "../models/movie.js";
+import Theatre from "../models/theatre.js";
 import sendEmail from "../config/nodemailer.js";
 import { clerkClient } from "@clerk/express";
 
@@ -69,7 +70,10 @@ const sendBookingConfirmationEmail = inngest.createFunction(
 
         const booking = await Booking.findById(bookingId).populate({
             path: 'show',
-            populate: { path: "movie", model: "Movie" }
+            populate: [
+                { path: "movie", model: "Movie" },
+                { path: "theatre", model: "Theatre" }
+            ]
         });
 
         if (!booking) {
@@ -133,34 +137,224 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             return;
         }
 
+        const movie = booking.show?.movie || {};
+        const theatre = booking.show?.theatre || {};
+        const show = booking.show || {};
+
+        const showDate = new Date(show.showDateTime).toLocaleDateString('en-US', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata'
+        });
+
+        const showTime = new Date(show.showDateTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Kolkata'
+        });
+
+        const posterUrl = movie.poster_path
+            ? `https://image.tmdb.org/t/p/w300${movie.poster_path}`
+            : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=300';
+
+        const theatreName = theatre.name || 'Cineverse Cinemas';
+        const theatreAddress = [theatre.address, theatre.city].filter(Boolean).join(', ') || 'Main Screen';
+        const formatBadge = [show.format || '2D', show.language || 'English'].join(' • ');
+        const seatsHtml = (booking.bookedSeats || []).map(seat => `
+            <span style="display:inline-block; background-color: #f43f5e; color: #ffffff; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 13px; margin: 2px 4px 2px 0;">${seat}</span>
+        `).join('');
+
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${booking._id}&color=0f172a&bgcolor=f8fafc`;
+
+        const ticketHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Your Movie Ticket - Cineverse</title>
+        </head>
+        <body style="margin: 0; padding: 24px 10px; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td align="center">
+                        <!-- Main Card -->
+                        <table role="presentation" width="100%" style="max-width: 540px; background-color: #131b2e; border: 1px solid #1e293b; border-radius: 20px; overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.5);" cellpadding="0" cellspacing="0" border="0">
+                            
+                            <!-- Header Logo & Status Banner -->
+                            <tr>
+                                <td style="padding: 22px 28px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-bottom: 1px solid #283548;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                            <td align="left">
+                                                <span style="font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #ffffff;">CINE<span style="color: #f43f5e;">VERSE</span></span>
+                                            </td>
+                                            <td align="right">
+                                                <span style="display: inline-block; background-color: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                    ● CONFIRMED
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+
+                            <!-- Movie Info Section -->
+                            <tr>
+                                <td style="padding: 24px 28px 16px 28px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                            <td width="105" valign="top" style="padding-right: 18px;">
+                                                <img src="${posterUrl}" alt="${movie.title}" width="105" height="150" style="display: block; border-radius: 12px; object-fit: cover; border: 1px solid #334155;" />
+                                            </td>
+                                            <td valign="top">
+                                                <div style="font-size: 12px; font-weight: 600; color: #f43f5e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">
+                                                    Movie Ticket
+                                                </div>
+                                                <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 800; color: #ffffff; line-height: 1.3;">
+                                                    ${movie.title}
+                                                </h1>
+                                                <div style="margin-bottom: 12px;">
+                                                    <span style="display: inline-block; background-color: #1e293b; color: #cbd5e1; padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 600;">
+                                                        ${formatBadge}
+                                                    </span>
+                                                    ${movie.run_time ? `<span style="display: inline-block; background-color: #1e293b; color: #94a3b8; padding: 3px 8px; border-radius: 5px; font-size: 11px; margin-left: 4px;">${Math.floor(movie.run_time / 60)}h ${movie.run_time % 60}m</span>` : ''}
+                                                </div>
+                                                <div style="font-size: 13px; color: #94a3b8; line-height: 1.4;">
+                                                    Enjoy your cinematic experience with premium sound and crystal visual clarity.
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+
+                            <!-- Ticket Perforation Tear Line -->
+                            <tr>
+                                <td style="padding: 6px 0;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                            <td width="16" height="24" style="background-color: #0b0f19; border-top-right-radius: 16px; border-bottom-right-radius: 16px; border-top: 1px solid #1e293b; border-right: 1px solid #1e293b; border-bottom: 1px solid #1e293b;"></td>
+                                            <td style="border-bottom: 2px dashed #2d3b55;"></td>
+                                            <td width="16" height="24" style="background-color: #0b0f19; border-top-left-radius: 16px; border-bottom-left-radius: 16px; border-top: 1px solid #1e293b; border-left: 1px solid #1e293b; border-bottom: 1px solid #1e293b;"></td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+
+                            <!-- Ticket Details Grid -->
+                            <tr>
+                                <td style="padding: 16px 28px 24px 28px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 18px;">
+                                        <!-- Cinema Hall -->
+                                        <tr>
+                                            <td colspan="2" style="padding-bottom: 16px; border-bottom: 1px solid #1e293b;">
+                                                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                                                    Cinema Hall / Theatre
+                                                </div>
+                                                <div style="font-size: 16px; font-weight: 800; color: #ffffff;">
+                                                    📍 ${theatreName}
+                                                </div>
+                                                <div style="font-size: 12px; color: #64748b; margin-top: 2px;">
+                                                    ${theatreAddress}
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <!-- Date & Time Row -->
+                                        <tr>
+                                            <td width="50%" style="padding: 14px 10px 14px 0; border-bottom: 1px solid #1e293b;">
+                                                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                                                    Show Date
+                                                </div>
+                                                <div style="font-size: 15px; font-weight: 700; color: #ffffff;">
+                                                    📅 ${showDate}
+                                                </div>
+                                            </td>
+                                            <td width="50%" style="padding: 14px 0 14px 10px; border-bottom: 1px solid #1e293b;">
+                                                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                                                    Show Time
+                                                </div>
+                                                <div style="font-size: 15px; font-weight: 700; color: #ffffff;">
+                                                    ⏰ ${showTime}
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <!-- Seats & Total Amount Row -->
+                                        <tr>
+                                            <td width="50%" style="padding: 14px 10px 4px 0;">
+                                                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                                                    Booked Seats (${booking.bookedSeats?.length || 1})
+                                                </div>
+                                                <div>
+                                                    ${seatsHtml}
+                                                </div>
+                                            </td>
+                                            <td width="50%" style="padding: 14px 0 4px 10px;" valign="top">
+                                                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                                                    Total Paid
+                                                </div>
+                                                <div style="font-size: 20px; font-weight: 900; color: #10b981;">
+                                                    ₹${booking.amount}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+
+                            <!-- QR Code & Entry Instructions -->
+                            <tr>
+                                <td style="padding: 0 28px 26px 28px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #172136; border: 1px dashed #2d3b55; border-radius: 12px; padding: 14px;">
+                                        <tr>
+                                            <td width="85" valign="middle" align="center">
+                                                <img src="${qrCodeUrl}" alt="Ticket QR" width="75" height="75" style="display: block; border-radius: 8px;" />
+                                            </td>
+                                            <td valign="middle" style="padding-left: 16px;">
+                                                <div style="font-size: 12px; font-weight: 700; color: #ffffff; margin-bottom: 3px;">
+                                                    Gate Entry Pass
+                                                </div>
+                                                <div style="font-size: 11px; color: #94a3b8; line-height: 1.4;">
+                                                    Scan this QR code or show your booking reference at the cinema turnstile for instant admission.
+                                                </div>
+                                                <div style="font-size: 10px; font-family: monospace; color: #64748b; margin-top: 6px;">
+                                                    REF: ${booking._id}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+
+                            <!-- Card Footer -->
+                            <tr>
+                                <td align="center" style="padding: 16px 28px; background-color: #0d1320; border-top: 1px solid #1e293b;">
+                                    <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.5;">
+                                        Have questions? Please reach out to <a href="mailto:ishansaraswat68@gmail.com" style="color: #f43f5e; text-decoration: none;">support@cineverse.com</a><br/>
+                                        &copy; 2026 Cineverse Entertainment Inc. All rights reserved.
+                                    </p>
+                                </td>
+                            </tr>
+
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        `;
+
         await sendEmail({
             to: userEmail,
-            subject: `Payment Confirmation : "${booking.show.movie.title}" Booked!`,
-            body: `
-            <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-                <h2>Hi ${userName},</h2>
-                <p>Your booking for <strong style="color: #F84565;">${booking.show.movie.title}</strong> is confirmed.</p>
-
-                <p>
-                    <strong>Date:</strong> ${new Date(booking.show.showDateTime).toLocaleDateString(
-                        'en-US',
-                        { timeZone: 'Asia/Kolkata' }
-                    )}<br/>
-
-                    <strong>Time:</strong> ${new Date(booking.show.showDateTime).toLocaleTimeString(
-                        'en-US',
-                        { timeZone: 'Asia/Kolkata' }
-                    )}<br/>
-
-                    <strong>Seats:</strong> ${booking.bookedSeats.join(', ')}<br/>
-                    <strong>Total Amount:</strong> ₹${booking.amount}
-                </p>
-                <p>Enjoy the show! 🍿</p>
-                <p>Thanks for booking with us!<br/>~ Cineverse Team</p>
-            </div>
-            `
+            subject: `🎟️ Movie Ticket Confirmed: "${movie.title || 'Movie'}" at ${theatreName}`,
+            body: ticketHtml
         });
-        console.log(`✅ Inngest email sent strictly to booked account: ${userEmail}`);
+        console.log(`✅ Inngest cinema ticket email sent strictly to booked account: ${userEmail}`);
     }
 );
 
