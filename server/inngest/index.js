@@ -2,6 +2,8 @@ import { Inngest } from "inngest";
 import User from "../models/User.js";
 import Booking from "../models/booking.js";
 import sendEmail from "../config/nodemailer.js";
+import { clerkClient } from "@clerk/express";
+
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
 
@@ -68,36 +70,74 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             populate: { path: "movie", model: "Movie" }
         }).populate('user');
 
+        if (!booking) {
+            console.error("Booking not found for Inngest event:", bookingId);
+            return;
+        }
+
+        // Get recipient email & name from MongoDB User or directly from Clerk
+        let userEmail = booking.user?.email;
+        let userName = booking.user?.name;
+
+        if (!userEmail) {
+            try {
+                const clerkUser = await clerkClient.users.getUser(booking.user || event.data.userId);
+                userEmail = clerkUser.emailAddresses?.[0]?.emailAddress;
+                userName = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'Movie Lover';
+
+                // Automatically save the user to MongoDB for future queries
+                if (clerkUser.id && userEmail) {
+                    await User.findByIdAndUpdate(
+                        clerkUser.id,
+                        {
+                            _id: clerkUser.id,
+                            name: userName,
+                            email: userEmail,
+                            image: clerkUser.imageUrl || ''
+                        },
+                        { upsert: true, new: true }
+                    );
+                }
+            } catch (clerkErr) {
+                console.error("Error fetching user from Clerk:", clerkErr.message);
+            }
+        }
+
+        if (!userEmail) {
+            console.error("No recipient email found for booking:", bookingId);
+            return;
+        }
+
         await sendEmail({
-            to: booking.user.email,
+            to: userEmail,
             subject: `Payment Confirmation : "${booking.show.movie.title}" Booked!`,
             body: `
             <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-                <h2>Hi ${booking.user.name},</h2>
-                <p>Your booking for <strong style="color: #F84565;">${booking.show.movie.title
-                    }</strong> is confirmed.</p>
+                <h2>Hi ${userName},</h2>
+                <p>Your booking for <strong style="color: #F84565;">${booking.show.movie.title}</strong> is confirmed.</p>
 
                 <p>
                     <strong>Date:</strong> ${new Date(booking.show.showDateTime).toLocaleDateString(
-                    'en-US',
-                    { timeZone: 'Asia/Kolkata' }
-                )
-                    }<br/>
+                        'en-US',
+                        { timeZone: 'Asia/Kolkata' }
+                    )}<br/>
 
                     <strong>Time:</strong> ${new Date(booking.show.showDateTime).toLocaleTimeString(
-                    'en-US',
-                    { timeZone: 'Asia/Kolkata' }
-                )
-                    }
+                        'en-US',
+                        { timeZone: 'Asia/Kolkata' }
+                    )}<br/>
+
+                    <strong>Seats:</strong> ${booking.bookedSeats.join(', ')}<br/>
+                    <strong>Total Amount:</strong> ₹${booking.amount}
                 </p>
                 <p>Enjoy the show! 🍿</p>
-                <p>Thanks for booking with us!<br/>~ QuickShow Team</p>
-                </div>
+                <p>Thanks for booking with us!<br/>~ Cineverse Team</p>
+            </div>
             `
-        })
-
+        });
+        console.log(`✅ Inngest email sent to: ${userEmail}`);
     }
-)
+);
 
 // Create an empty array where we'll export future Inngest functions
 export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdate, sendBookingConfirmationEmail];
