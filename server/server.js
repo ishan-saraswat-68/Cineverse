@@ -39,6 +39,10 @@ app.use('/api/admin',adminRouter);
 app.use('/api/user',userRouter);
 app.use('/api/theatre',theatreRouter);
 
-app.listen(port,()=>{
-    console.log(`server is listening at http://localhost:${port}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(port, () => {
+        console.log(`server is listening at http://localhost:${port}`);
+    });
+}
+
+export default app;
