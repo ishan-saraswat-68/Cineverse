@@ -30,6 +30,12 @@ export const stripeWebHooks = async (req, res) => {
                         isPaid: true,
                         paymentLink: ""
                     });
+
+                    // Send Booking Confirmation Email through Inngest
+                    await inngest.send({
+                        name: 'app/show.booked',
+                        data: { bookingId }
+                    });
                     console.log(`✅ Booking ${bookingId} marked as PAID via checkout.session.completed`);
                 }
                 break;
@@ -42,8 +48,9 @@ export const stripeWebHooks = async (req, res) => {
                     payment_intent: paymentIntent.id
                 });
                 const session = sessionList.data[0];
-                if (session?.metadata?.bookingId) {
-                    await Booking.findByIdAndUpdate(session.metadata.bookingId, {
+                const bookingId = session?.metadata?.bookingId;
+                if (bookingId) {
+                    await Booking.findByIdAndUpdate(bookingId, {
                         isPaid: true,
                         paymentLink: ""
                     });
@@ -51,9 +58,9 @@ export const stripeWebHooks = async (req, res) => {
                     // Send Booking Confirmation Email through Inngest
                     await inngest.send({
                         name: 'app/show.booked',
-                        data: {bookingId}
-                    })
-                    console.log(`✅ Booking ${session.metadata.bookingId} marked as PAID via payment_intent.succeeded`);
+                        data: { bookingId }
+                    });
+                    console.log(`✅ Booking ${bookingId} marked as PAID via payment_intent.succeeded`);
                 }
                 break;
             }
