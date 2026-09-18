@@ -17,7 +17,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const app = express();
 const port = 3000;
-await connectDB();
+connectDB();
 
 // Stripe Webhooks Route 
 app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebHooks);
@@ -38,6 +38,12 @@ app.use('/api/booking', bookingRouter);
 app.use('/api/admin',adminRouter);
 app.use('/api/user',userRouter);
 app.use('/api/theatre',theatreRouter);
+
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error("Server Error:", err);
+    res.status(500).json({ success: false, message: err.message || "Internal Server Error" });
+});
 
 if (process.env.NODE_ENV !== 'production') {
     app.listen(port, () => {
