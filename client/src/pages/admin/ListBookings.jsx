@@ -69,9 +69,9 @@ const ListBookings = () => {
                                 </td>
 
                                 <td className="p-2">
-                                    {Object.keys(item.bookedSeats).map(
-                                        (seat) => item.bookedSeats[seat]
-                                    ).join(", ")}
+                                    {Array.isArray(item.bookedSeats) 
+                                        ? item.bookedSeats.join(", ") 
+                                        : Object.values(item.bookedSeats || {}).join(", ")}
                                 </td>
 
                                 <td className="p-2">

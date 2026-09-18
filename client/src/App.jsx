@@ -12,6 +12,7 @@ import {Routes,Route, useLocation} from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Layout from './pages/admin/Layout';
 import Dashboard from './pages/admin/Dashboard';
+import Loading from './components/Loading';
 import ListShows from './pages/admin/ListShows';
 import AddShows from './pages/admin/AddShows';
 import ListBookings from './pages/admin/ListBookings';
@@ -37,6 +38,7 @@ function App() {
       <Route path="/seat-layout/:showId" element={<SeatLayout/>}/>
       <Route path="/favorite" element={<Favourite/>}/>
       <Route path="/my-bookings" element={<MyBookings/>}/> 
+      <Route path="/loading/:nextUrl" element={<Loading/>}/>
       <Route path="/booking-confirmation" element={<BookingConfirmation/>}/>
       <Route path='/admin/*' element={user? <Layout/>:(
         <div className="min-h-screen flex items-center justify-center">

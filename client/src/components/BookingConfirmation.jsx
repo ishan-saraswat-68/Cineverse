@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { FaCheckCircle, FaTicketAlt, FaHome, FaFilm, FaMapMarkerAlt, FaCalendarAlt, FaClock, FaGlobeAmericas, FaTv } from 'react-icons/fa';
 import BlurCircle from './BlurCircle';
+import { useAppContext } from '../context/AppContext';
 
 export default function BookingConfirmation() {
   const location = useLocation();
   const [animateIn, setAnimateIn] = useState(false);
+  const {image_base_url} = useAppContext()
 
   // Read booking from navigation state (passed by MyBookings)
   const rawBooking = location.state?.booking;
@@ -77,7 +79,7 @@ export default function BookingConfirmation() {
           {/* Movie Banner */}
           <div className="relative h-36 overflow-hidden">
             <img
-              src={show.movie.poster}
+              src={`${image_base_url}${show.movie.poster}`}
               alt={show.movie.title}
               className="w-full h-full object-cover brightness-[0.35] scale-110"
             />

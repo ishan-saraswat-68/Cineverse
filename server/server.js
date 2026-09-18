@@ -11,6 +11,7 @@ import bookingRouter from "./routes/bookingRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import userRouter from "./routes/userRoutes.js";
 import theatreRouter from "./routes/theatreRoutes.js";
+import { stripeWebHooks } from "./controllers/stripeWebHooks.js";
 import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
 
@@ -19,7 +20,10 @@ dotenv.config();
 
 const app = express();
 const port = 3000;
-connectDB();
+await connectDB();
+
+// Stripe Webhooks Route 
+app.use('/api/stripe',express.raw({type:'application/json'}),stripeWebHooks);
 
 //middleware
 app.use(cors());

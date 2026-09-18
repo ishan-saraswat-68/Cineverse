@@ -10,8 +10,8 @@ import { useAppContext } from '../context/AppContext'
 const SeatLayout = () => {
   const { showId } = useParams()
   const navigate = useNavigate()
-  const { axios, image_base_url } = useAppContext()
-
+  const { axios, image_base_url, getToken, user} = useAppContext()
+  const [isBooking, setIsBooking] = useState(false)
   const [selectedSeats, setSelectedSeats] = useState([])
   const [show, setShow] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -78,14 +78,38 @@ const SeatLayout = () => {
     return Object.values(breakdown);
   };
 
-  const handleProceed = () => {
-    if (selectedSeats.length === 0) {
-      return toast.error('Please select seats first')
+  const bookTickets = async () => {
+    if (!user) {
+      return toast.error("Please login to proceed with booking")
     }
-    navigate('/my-bookings', {
-      state: { showId, selectedSeats, showPrice: show.showPrice, totalPrice }
-    })
+    if (selectedSeats.length === 0) {
+      return toast.error("Please select at least one seat")
+    }
+    try {
+      setIsBooking(true)
+      const token = await getToken()
+      const { data } = await axios.post(
+        '/api/booking/create',
+        { showId, selectedSeats },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+      if (data.success) {
+        window.location.href = data.url; //redirect to payment page
+      } else {
+        toast.error(data.message || "Failed to create booking")
+      }
+    } catch (error) {
+      console.error("Booking error:", error)
+      toast.error(error.response?.data?.message || "Booking failed")
+    } finally {
+      setIsBooking(false)
+    }
   }
+
 
   if (loading) return <Loading />
   if (!show) return null
@@ -193,12 +217,14 @@ const SeatLayout = () => {
 
               {/* Proceed to Checkout Button */}
               <button
-                onClick={handleProceed}
-                className='w-full flex items-center justify-center gap-2 py-3 bg-primary hover:bg-primary-dull transition rounded-xl font-semibold cursor-pointer active:scale-95 text-white text-sm shadow-neon-primary mt-2'
+                disabled={isBooking}
+                onClick={bookTickets}
+                className='w-full flex items-center justify-center gap-2 py-3 bg-primary hover:bg-primary-dull transition rounded-xl font-semibold cursor-pointer active:scale-95 text-white text-sm shadow-neon-primary mt-2 disabled:opacity-50 disabled:cursor-not-allowed'
               >
-                Proceed To CheckOut
+                {isBooking ? 'Processing Booking...' : 'Proceed To CheckOut'}
                 <ArrowRightIcon strokeWidth={2.5} className='w-4 h-4' />
               </button>
+
             </div>
           ) : (
             <div className='text-center py-6 text-gray-400'>
