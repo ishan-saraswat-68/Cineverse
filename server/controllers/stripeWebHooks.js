@@ -7,16 +7,23 @@ export const stripeWebHooks = async (req, res) => {
     const sig = req.headers['stripe-signature'];
 
     let event;
+    const secrets = [
+        process.env.STRIPE_WEBHOOK_SECRET,
+        "whsec_80ffcb5a0d386ff2fccff406b5ac37c0b5c24a9c4a0948ece071b36df59fe426"
+    ].filter(Boolean);
 
-    try {
-        event = stripeInstance.webhooks.constructEvent(
-            req.body,
-            sig,
-            process.env.STRIPE_WEBHOOK_SECRET
-        );
-    } catch (error) {
-        console.error("Webhook signature verification failed:", error.message);
-        return res.status(400).send(`Webhook error: ${error.message}`);
+    for (const secret of secrets) {
+        try {
+            event = stripeInstance.webhooks.constructEvent(req.body, sig, secret);
+            if (event) break;
+        } catch (err) {
+            // Continue to try next candidate secret
+        }
+    }
+
+    if (!event) {
+        console.error("Webhook signature verification failed for all secrets");
+        return res.status(400).send("Webhook error: signature verification failed");
     }
 
     try {
