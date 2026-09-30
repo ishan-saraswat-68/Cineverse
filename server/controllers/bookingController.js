@@ -36,7 +36,8 @@ export const createBooking = async (req, res) => {
   try {
     const { showId, selectedSeats } = req.body;
     const { userId } = req.auth();
-    const {origin} = req.headers;
+    const rawOrigin = req.headers.origin || req.headers.referer || process.env.CLIENT_URL || "http://localhost:5173";
+    const origin = rawOrigin.replace(/\/$/, "");
 
     if (!userId) {
       return res.status(401).json({ success: false, message: "Unauthorized. Please login to continue." });
