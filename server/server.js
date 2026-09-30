@@ -165,7 +165,9 @@ io.on("connection", (socket) => {
     }
   });
 });
-
+app.get('/', (req, res) => {
+  res.send('server is runnign well');
+});
 // Stripe Webhooks Route (raw body)
 app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebHooks);
 
@@ -174,6 +176,7 @@ app.use(cors());
 app.use(express.json());
 
 // Inngest endpoint
+
 app.use("/api/inngest", serve({ client: inngest, functions }));
 
 app.use(clerkMiddleware());
