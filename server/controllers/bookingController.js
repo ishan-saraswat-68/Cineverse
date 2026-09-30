@@ -99,19 +99,7 @@ export const createBooking = async (req, res) => {
       status: "pending",
     });
 
-    // 6. Schedule Inngest Watchdog (auto-release if abandoned)
-    await inngest.send({
-      name: "booking/lock.created",
-      data: {
-        bookingId: booking._id.toString(),
-        showId,
-        seats: selectedSeats,
-        userId,
-        ttlSeconds: lockTtlSeconds,
-      },
-    });
-
-    // 7. Create Stripe Checkout Session (10-minute expiry)
+    // 6. Create Stripe Checkout Session (Stripe API requires >= 30 min on creation)
     const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
     const line_items = [{
       price_data: {
@@ -136,11 +124,24 @@ export const createBooking = async (req, res) => {
         userId,
         showId,
       },
-      expires_at: Math.floor(Date.now() / 1000) + (10 * 60), // 10 minutes
+      expires_at: Math.floor(Date.now() / 1000) + (30 * 60), // Stripe API requires minimum 30 minutes
     });
 
     booking.paymentLink = session.url;
     await booking.save();
+
+    // 7. Schedule Inngest Watchdog (force-expires Stripe and releases Redis locks at 5 min)
+    await inngest.send({
+      name: "booking/lock.created",
+      data: {
+        bookingId: booking._id.toString(),
+        showId,
+        seats: selectedSeats,
+        userId,
+        ttlSeconds: lockTtlSeconds,
+        sessionId: session.id,
+      },
+    });
 
     res.json({
       success: true,

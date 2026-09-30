@@ -7,6 +7,7 @@ import Theatre from "../models/theatre.js";
 import sendEmail from "../config/nodemailer.js";
 import { clerkClient } from "@clerk/express";
 import { releaseSeatLocks } from "../config/redis.js";
+import Stripe from "stripe";
 
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
@@ -366,22 +367,38 @@ const seatLockExpiryWatchdog = inngest.createFunction(
     triggers: [{ event: "booking/lock.created" }]
   },
   async ({ event, step }) => {
+    const { bookingId, showId, seats, userId, sessionId } = event.data;
     const ttlSec = event.data.ttlSeconds || parseInt(process.env.SEAT_LOCK_TTL_SECONDS, 10) || 300;
-    // 1. Sleep dynamically matching the Redis lock TTL
+
+    // 1. Sleep dynamically matching the 5-minute Redis lock TTL
     await step.sleep("wait-for-checkout-expiration", `${ttlSec}s`);
+
     // 2. Check the booking payment status in MongoDB
     const booking = await step.run("check-payment-status", async () => {
       return await Booking.findById(bookingId);
     });
-    // 3. If booking doesn't exist or is not paid, release seats!
+
+    // 3. If booking doesn't exist or is not paid, release seats and expire Stripe checkout!
     if (!booking || !booking.isPaid) {
       await step.run("release-abandoned-seats", async () => {
-        // Safe Lua release
+        // Safe Lua release in Redis
         await releaseSeatLocks(showId, seats, userId);
-        // Mark booking as expired
+
+        // Mark booking as expired in MongoDB
         await Booking.findByIdAndUpdate(bookingId, { status: "expired" });
-        // Optional: Trigger socket release event or log
-        console.log(` Seats auto-released for expired booking: ${bookingId}`);
+
+        // Manually expire the Stripe session at the 5-minute mark
+        if (sessionId) {
+          try {
+            const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
+            await stripeInstance.checkout.sessions.expire(sessionId);
+            console.log(`🔒 Stripe Checkout Session ${sessionId} expired at 5-minute mark`);
+          } catch (stripeErr) {
+            console.warn("Stripe session expiration note:", stripeErr.message);
+          }
+        }
+
+        console.log(`⏰ Seats auto-released for expired booking: ${bookingId}`);
       });
     }
   }
