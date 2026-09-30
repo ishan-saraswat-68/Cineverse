@@ -5,32 +5,90 @@ import Movie from "../models/movie.js";
 import Show from "../models/show.js";
 import { set } from "mongoose";
 
-// Workaround for ISP DNS poisoning of TMDB API in some regions
+// Workaround for ISP DNS poisoning & edge reset of TMDB API in some regions
 const customDnsResolver = new dns.promises.Resolver();
 customDnsResolver.setServers(['8.8.8.8', '1.1.1.1']);
 
-const httpsAgent = new https.Agent({
-  lookup: (hostname, options, callback) => {
-    if (hostname === 'api.themoviedb.org') {
-      customDnsResolver.resolve4(hostname).then(addresses => {
-        if (addresses && addresses.length > 0) {
-          if (options && options.all) {
-            callback(null, [{ address: addresses[0], family: 4 }]);
-          } else {
-            callback(null, addresses[0], 4);
-          }
-        } else {
-          dns.lookup(hostname, options, callback);
-        }
-      }).catch(err => {
-        console.error("DNS Resolution Error:", err);
-        dns.lookup(hostname, options, callback);
-      });
-    } else {
-      dns.lookup(hostname, options, callback);
+let cachedIps = [];
+let lastResolved = 0;
+
+async function getHealthyTmdbIps() {
+    const now = Date.now();
+    if (cachedIps.length > 0 && (now - lastResolved < 60000)) {
+        return cachedIps;
     }
-  }
+    const results = [];
+    try {
+        const v6 = await customDnsResolver.resolve6('api.themoviedb.org');
+        v6.forEach(ip => results.push({ address: ip, family: 6 }));
+    } catch (e) {}
+    try {
+        const v4 = await customDnsResolver.resolve4('api.themoviedb.org');
+        v4.forEach(ip => results.push({ address: ip, family: 4 }));
+    } catch (e) {}
+
+    // Shuffle pool so requests don't stick to a single reset edge node
+    for (let i = results.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [results[i], results[j]] = [results[j], results[i]];
+    }
+
+    if (results.length > 0) {
+        cachedIps = results;
+        lastResolved = now;
+    }
+    return cachedIps;
+}
+
+const httpsAgent = new https.Agent({
+    keepAlive: true,
+    autoSelectFamily: false,
+    lookup: async (hostname, options, callback) => {
+        if (hostname === 'api.themoviedb.org') {
+            try {
+                const ips = await getHealthyTmdbIps();
+                if (ips.length > 0) {
+                    if (options && options.all) {
+                        return callback(null, ips);
+                    }
+                    const picked = ips[Math.floor(Math.random() * ips.length)];
+                    return callback(null, picked.address, picked.family);
+                }
+            } catch (e) {}
+        }
+        dns.lookup(hostname, options, callback);
+    }
 });
+
+const tmdbClient = axios.create({
+    baseURL: 'https://api.themoviedb.org/3',
+    headers: {
+        Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
+        'Accept-Encoding': 'identity'
+    },
+    httpsAgent,
+    timeout: 10000
+});
+
+export const fetchTmdb = async (config, retries = 3, delay = 500) => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await tmdbClient(config);
+        } catch (err) {
+            const isNetworkError = !err.response && (
+                err.code === 'ECONNRESET' ||
+                err.code === 'ETIMEDOUT' ||
+                err.code === 'ECONNREFUSED' ||
+                (err.message && err.message.includes('socket hang up'))
+            );
+            if (attempt === retries || !isNetworkError) {
+                throw err;
+            }
+            console.warn(`[TMDB] Network issue (${err.code || err.message}) on attempt ${attempt}. Retrying in ${delay * attempt}ms...`);
+            await new Promise(res => setTimeout(res, delay * attempt));
+        }
+    }
+};
 
 // API to get now playing movies from TMDB api (defaults to Indian cinemas: region=IN)
 export const getNowPlayingMovies = async (req, res) => {
@@ -38,21 +96,17 @@ export const getNowPlayingMovies = async (req, res) => {
         const region = req.query.region || 'IN';
         const page = req.query.page || 1;
 
-        const response = await axios.get('https://api.themoviedb.org/3/movie/now_playing', {
+        const response = await fetchTmdb({
+            url: '/movie/now_playing',
             params: {
                 region,
                 page
-            },
-            headers: {
-                Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-                'Accept-Encoding': 'identity'
-            },
-            httpsAgent
+            }
         });
         const data = response.data;
         res.json({ success: true, movies: data.results, total_pages: data.total_pages });
     } catch (error) {
-        console.error(error);
+        console.error("Get Now Playing Error:", error);
         res.status(500).json({ message: error.message });
     }
 }
@@ -65,17 +119,13 @@ export const searchMovies = async (req, res) => {
             return res.json({ success: true, movies: [], total_pages: 0 });
         }
 
-        const response = await axios.get('https://api.themoviedb.org/3/search/movie', {
+        const response = await fetchTmdb({
+            url: '/search/movie',
             params: {
                 query: query.trim(),
                 page,
                 include_adult: false
-            },
-            headers: {
-                Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-                'Accept-Encoding': 'identity'
-            },
-            httpsAgent
+            }
         });
 
         const data = response.data;
@@ -107,14 +157,8 @@ export const addShow = async (req, res) => {
         let movie = await Movie.findById(movieID);
         if(!movie){
             const [movieDetailsResponse, movieCreditsResponse] = await Promise.all([
-                axios.get(`https://api.themoviedb.org/3/movie/${movieID}`, {
-                    headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}`, 'Accept-Encoding': 'identity' },
-                    httpsAgent
-                }),
-                axios.get(`https://api.themoviedb.org/3/movie/${movieID}/credits`, {
-                    headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}`, 'Accept-Encoding': 'identity' },
-                    httpsAgent
-                })
+                fetchTmdb({ url: `/movie/${movieID}` }),
+                fetchTmdb({ url: `/movie/${movieID}/credits` })
             ]);
 
             const movieApiData = movieDetailsResponse.data;
