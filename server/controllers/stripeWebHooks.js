@@ -1,6 +1,8 @@
 import stripe from "stripe";
 import Booking from "../models/booking.js";
 import { inngest } from "../inngest/index.js";
+import Show from "../models/show.js";
+import { releaseSeatLocks } from "../config/redis.js";
 
 export const stripeWebHooks = async (req, res) => {
     const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
@@ -33,19 +35,52 @@ export const stripeWebHooks = async (req, res) => {
                 const session = event.data.object;
                 const bookingId = session.metadata?.bookingId;
                 const userId = session.metadata?.userId;
+                const showId = session.metadata?.showId;
                 const customerEmail = session.customer_details?.email || session.customer_email;
                 if (bookingId) {
-                    await Booking.findByIdAndUpdate(bookingId, {
-                        isPaid: true,
-                        paymentLink: ""
-                    });
+                    const booking = await Booking.findById(bookingId);
+                    if (booking && !booking.isPaid) {
+                        const seats = booking.bookedSeats || [];
+                        const targetShowId = showId || booking.show;
 
-                    // Send Booking Confirmation Email through Inngest
-                    await inngest.send({
-                        name: 'app/show.booked',
-                        data: { bookingId, userId, customerEmail }
-                    });
-                    console.log(`✅ Booking ${bookingId} marked as PAID via checkout.session.completed`);
+                        // 1. Atomic conditional update to MongoDB Show
+                        const query = { _id: targetShowId };
+                        const update = {};
+                        seats.forEach((seat) => {
+                            query[`occupiedSeats.${seat}`] = { $exists: false };
+                            update[`occupiedSeats.${seat}`] = userId || booking.user;
+                        });
+
+                        const updatedShow = await Show.findOneAndUpdate(query, { $set: update }, { new: true });
+                        if (!updatedShow) {
+                            console.error(`🚨 Fatal: Seat collision in MongoDB for booking ${bookingId}`);
+                        }
+
+                        // 2. Mark booking as confirmed
+                        booking.isPaid = true;
+                        booking.paymentLink = "";
+                        booking.status = "confirmed";
+                        await booking.save();
+
+                        // 3. Release Redis temporary lock
+                        await releaseSeatLocks(targetShowId.toString(), seats, userId || booking.user);
+
+                        // 4. Broadcast to all clients via Socket.IO
+                        const io = req.app.get("io");
+                        if (io) {
+                            io.to(`show:${targetShowId}`).emit("seats-confirmed", {
+                                showId: targetShowId,
+                                seats,
+                            });
+                        }
+
+                        // 5. Send Booking Confirmation Email through Inngest
+                        await inngest.send({
+                            name: 'app/show.booked',
+                            data: { bookingId, userId: userId || booking.user, customerEmail }
+                        });
+                        console.log(`✅ Booking ${bookingId} marked as PAID via checkout.session.completed`);
+                    }
                 }
                 break;
             }
@@ -59,19 +94,52 @@ export const stripeWebHooks = async (req, res) => {
                 const session = sessionList.data[0];
                 const bookingId = session?.metadata?.bookingId;
                 const userId = session?.metadata?.userId;
+                const showId = session?.metadata?.showId;
                 const customerEmail = session?.customer_details?.email || session?.customer_email;
                 if (bookingId) {
-                    await Booking.findByIdAndUpdate(bookingId, {
-                        isPaid: true,
-                        paymentLink: ""
-                    });
+                    const booking = await Booking.findById(bookingId);
+                    if (booking && !booking.isPaid) {
+                        const seats = booking.bookedSeats || [];
+                        const targetShowId = showId || booking.show;
 
-                    // Send Booking Confirmation Email through Inngest
-                    await inngest.send({
-                        name: 'app/show.booked',
-                        data: { bookingId, userId, customerEmail }
-                    });
-                    console.log(`✅ Booking ${bookingId} marked as PAID via payment_intent.succeeded`);
+                        // 1. Atomic conditional update to MongoDB Show
+                        const query = { _id: targetShowId };
+                        const update = {};
+                        seats.forEach((seat) => {
+                            query[`occupiedSeats.${seat}`] = { $exists: false };
+                            update[`occupiedSeats.${seat}`] = userId || booking.user;
+                        });
+
+                        const updatedShow = await Show.findOneAndUpdate(query, { $set: update }, { new: true });
+                        if (!updatedShow) {
+                            console.error(`🚨 Fatal: Seat collision in MongoDB for booking ${bookingId}`);
+                        }
+
+                        // 2. Mark booking as confirmed
+                        booking.isPaid = true;
+                        booking.paymentLink = "";
+                        booking.status = "confirmed";
+                        await booking.save();
+
+                        // 3. Release Redis temporary lock
+                        await releaseSeatLocks(targetShowId.toString(), seats, userId || booking.user);
+
+                        // 4. Broadcast to all clients via Socket.IO
+                        const io = req.app.get("io");
+                        if (io) {
+                            io.to(`show:${targetShowId}`).emit("seats-confirmed", {
+                                showId: targetShowId,
+                                seats,
+                            });
+                        }
+
+                        // 5. Send Booking Confirmation Email through Inngest
+                        await inngest.send({
+                            name: 'app/show.booked',
+                            data: { bookingId, userId: userId || booking.user, customerEmail }
+                        });
+                        console.log(`✅ Booking ${bookingId} marked as PAID via payment_intent.succeeded`);
+                    }
                 }
                 break;
             }

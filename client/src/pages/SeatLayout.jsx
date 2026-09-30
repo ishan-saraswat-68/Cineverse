@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { io } from 'socket.io-client';
 import Loading from '../components/Loading.jsx'
 import { assets } from '../assets/assets'
 import { ArrowRightIcon, Armchair, Receipt } from 'lucide-react'
@@ -14,7 +15,9 @@ const SeatLayout = () => {
   const [isBooking, setIsBooking] = useState(false)
   const [selectedSeats, setSelectedSeats] = useState([])
   const [show, setShow] = useState(null)
+  const [lockedSeats, setLockedSeats] = useState({})
   const [loading, setLoading] = useState(true)
+  const socketRef = useRef(null)
 
   const getShow = async () => {
     try {
@@ -23,6 +26,12 @@ const SeatLayout = () => {
         setShow(data.show)
       } else {
         toast.error('Show not found')
+      }
+
+      // Fetch active Redis locks
+      const { data: seatData } = await axios.get(`/api/booking/seats/${showId}`)
+      if (seatData?.success && seatData.activeLocks) {
+        setLockedSeats(seatData.activeLocks)
       }
     } catch (error) {
       console.error(error)
@@ -36,20 +45,182 @@ const SeatLayout = () => {
     getShow()
   }, [showId])
 
+  // Real-Time Socket Connection for Seat Locking
+  useEffect(() => {
+    const rawUrl = import.meta.env.VITE_BASE_URL || 'http://localhost:3000';
+    const socketUrl = rawUrl.trim();
+    const socket = io(socketUrl, {
+      withCredentials: true,
+      transports: ['websocket', 'polling'],
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('✅ [Socket.IO] Connected with ID:', socket.id);
+      socket.emit('join:show', showId);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('❌ [Socket.IO] Connection error:', err.message);
+    });
+
+    const defaultTtlMs = (parseInt(import.meta.env.VITE_SEAT_LOCK_TTL_SECONDS, 10) || 300) * 1000;
+
+    // Initial locks sent from server on room join
+    socket.on('initial-locks', (locks) => {
+      console.log('📥 [Socket.IO] Initial locks received:', locks);
+      const formatted = {};
+      Object.entries(locks || {}).forEach(([seatId, data]) => {
+        formatted[seatId] = {
+          userId: data.userId,
+          expiresAt: Date.now() + (data.ttlMs || defaultTtlMs),
+        };
+      });
+      setLockedSeats(formatted);
+    });
+
+    // Another user locked seats
+    socket.on('seats-locked', ({ seats, userId, ttlMs }) => {
+      console.log('🔒 [Socket.IO] seats-locked received:', seats, 'by user:', userId);
+      const expiresAt = Date.now() + (ttlMs || defaultTtlMs);
+      setLockedSeats((prev) => {
+        const next = { ...prev };
+        seats.forEach((seat) => {
+          next[seat] = { userId, expiresAt };
+        });
+        return next;
+      });
+    });
+
+    // Seats released (expired or user backed out)
+    socket.on('seats-released', ({ seats }) => {
+      console.log('🔓 [Socket.IO] seats-released received:', seats);
+      setLockedSeats((prev) => {
+        const next = { ...prev };
+        seats.forEach((seat) => delete next[seat]);
+        return next;
+      });
+      // If the released seats were selected by this user, deselect them in real-time!
+      setSelectedSeats((prev) => {
+        const hadAny = prev.some((id) => seats.includes(id));
+        if (hadAny) {
+          toast('Seat reservation expired', { icon: '⏰' });
+        }
+        return prev.filter((id) => !seats.includes(id));
+      });
+    });
+
+    // Seats permanently purchased
+    socket.on('seats-confirmed', ({ seats }) => {
+      console.log('🎟️ [Socket.IO] seats-confirmed received:', seats);
+      setShow((prevShow) => {
+        if (!prevShow) return prevShow;
+        const updatedOccupied = { ...(prevShow.occupiedSeats || {}) };
+        seats.forEach((seat) => {
+          updatedOccupied[seat] = 'sold';
+        });
+        return { ...prevShow, occupiedSeats: updatedOccupied };
+      });
+      setLockedSeats((prev) => {
+        const next = { ...prev };
+        seats.forEach((seat) => delete next[seat]);
+        return next;
+      });
+    });
+
+    // If another user locked this seat at the exact same millisecond
+    socket.on('seat:lock-failed', ({ seatId, message }) => {
+      toast.error(message || `Seat ${seatId} was just taken by another customer.`);
+      setSelectedSeats((prev) => prev.filter((id) => id !== seatId));
+    });
+
+    return () => {
+      socket.emit('leave:show', showId);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [showId]);
+
+  // Client-side auto-cleanup sweep: clears expired locks in real-time every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setLockedSeats((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        Object.entries(next).forEach(([seatId, lock]) => {
+          if (lock.expiresAt && now > lock.expiresAt) {
+            delete next[seatId];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+
+      // Automatically deselect if the user's own seat reservation expired
+      setSelectedSeats((prev) => {
+        let hadExpired = false;
+        const remaining = prev.filter((seatId) => {
+          const lock = lockedSeats[seatId];
+          const isExpired = lock?.expiresAt && now > lock.expiresAt;
+          if (isExpired) hadExpired = true;
+          return !isExpired;
+        });
+        if (hadExpired) {
+          toast('Seat reservation expired', { icon: '⏰' });
+        }
+        return remaining;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [lockedSeats]);
+
   const handleSeatClick = (seatId) => {
-    // Check if seat is occupied
+    // Check if permanently booked
     if (show?.occupiedSeats && show.occupiedSeats[seatId]) {
-      return toast.error('This seat is already booked')
+      return toast.error('This seat is already booked');
     }
 
-    if (!selectedSeats.includes(seatId) && selectedSeats.length >= 4) {
-      return toast.error('You can only select up to 4 seats at a time')
+    const currentUserId = user?.id || socketRef.current?.id;
+
+    // Check if temporarily held by another customer
+    const lock = lockedSeats[seatId];
+    if (lock && lock.userId !== currentUserId) {
+      return toast.error('This seat is currently held by another customer in checkout');
     }
 
-    setSelectedSeats((prev) =>
-      prev.includes(seatId) ? prev.filter((id) => id !== seatId) : [...prev, seatId]
-    )
-  }
+    const isSelected = selectedSeats.includes(seatId);
+
+    if (isSelected) {
+      // Deselect locally
+      setSelectedSeats((prev) => prev.filter((id) => id !== seatId));
+      // Unlock in Redis immediately via Socket.IO
+      if (socketRef.current) {
+        socketRef.current.emit('seat:unlock', {
+          showId,
+          seatId,
+          userId: currentUserId,
+        });
+      }
+    } else {
+      if (selectedSeats.length >= 4) {
+        return toast.error('You can only select up to 4 seats at a time');
+      }
+
+      // Optimistically select locally
+      setSelectedSeats((prev) => [...prev, seatId]);
+
+      // Lock in Redis immediately via Socket.IO
+      if (socketRef.current) {
+        socketRef.current.emit('seat:lock', {
+          showId,
+          seatId,
+          userId: currentUserId,
+        });
+      }
+    }
+  };
 
   const getSeatPrice = (seatId) => {
     const rowLetter = seatId.replace(/[0-9]/g, '');
@@ -251,7 +422,27 @@ const SeatLayout = () => {
 
         {/* RIGHT SIDE: Seats Matrix & Screen */}
         <div className='flex-1 w-full flex flex-col items-center order-1 lg:order-2'>
-          <h2 className='text-xl font-semibold mb-6'>Select your seats</h2>
+          <h2 className='text-xl font-semibold mb-3'>Select your seats</h2>
+
+          {/* Seat Status Legend */}
+          <div className='flex flex-wrap items-center justify-center gap-6 mb-6 text-xs text-gray-300'>
+            <div className='flex items-center gap-2'>
+              <div className='w-4 h-4 rounded border border-primary/50 bg-transparent'></div>
+              <span>Available</span>
+            </div>
+            <div className='flex items-center gap-2'>
+              <div className='w-4 h-4 rounded bg-primary shadow-neon-primary'></div>
+              <span>Selected</span>
+            </div>
+            <div className='flex items-center gap-2'>
+              <div className='w-4 h-4 rounded bg-amber-500/20 border border-amber-500/60 text-amber-400 animate-pulse'></div>
+              <span>Held (Checkout)</span>
+            </div>
+            <div className='flex items-center gap-2'>
+              <div className='w-4 h-4 rounded bg-gray-700/40 border border-gray-700'></div>
+              <span>Sold</span>
+            </div>
+          </div>
 
           <div className='w-full flex flex-col items-center gap-10 mt-4'>
             {show.theatre?.seatingSections?.map((section) => (
@@ -278,16 +469,28 @@ const SeatLayout = () => {
                         {Array.from({ length: section.seatsPerRow }, (_, i) => {
                           const seatId = `${rowLetter}${i + 1}`
                           const isOccupied = show.occupiedSeats && show.occupiedSeats[seatId]
+                          const lock = lockedSeats[seatId]
+                          const currentUserId = user?.id || socketRef.current?.id
+                          const isLockedByOther = lock && lock.userId !== currentUserId
                           const isSelected = selectedSeats.includes(seatId)
 
                           return (
                             <button
                               key={seatId}
-                              disabled={isOccupied}
+                              disabled={isOccupied || isLockedByOther}
                               onClick={() => handleSeatClick(seatId)}
+                              title={
+                                isOccupied
+                                  ? 'Seat already booked'
+                                  : isLockedByOther
+                                  ? 'Held by another customer'
+                                  : seatId
+                              }
                               className={`h-8 w-8 md:h-9 md:w-9 rounded-md text-xs font-medium transition-all duration-200 flex items-center justify-center cursor-pointer ${
                                 isOccupied
                                   ? 'bg-gray-700/40 text-gray-600 border border-gray-700 cursor-not-allowed'
+                                  : isLockedByOther
+                                  ? 'bg-amber-500/20 border border-amber-500/60 text-amber-400 cursor-not-allowed animate-pulse'
                                   : isSelected
                                   ? 'bg-primary text-white shadow-neon-primary scale-105'
                                   : 'border border-primary/50 text-gray-300 hover:border-primary hover:bg-primary/10'

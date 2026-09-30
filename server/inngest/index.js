@@ -6,6 +6,7 @@ import Movie from "../models/movie.js";
 import Theatre from "../models/theatre.js";
 import sendEmail from "../config/nodemailer.js";
 import { clerkClient } from "@clerk/express";
+import { releaseSeatLocks } from "../config/redis.js";
 
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
@@ -358,5 +359,34 @@ const sendBookingConfirmationEmail = inngest.createFunction(
     }
 );
 
+// Inngest Watchdog Function
+const seatLockExpiryWatchdog = inngest.createFunction(
+  {
+    id: "seat-lock-expiry-watchdog",
+    triggers: [{ event: "booking/lock.created" }]
+  },
+  async ({ event, step }) => {
+    const ttlSec = event.data.ttlSeconds || parseInt(process.env.SEAT_LOCK_TTL_SECONDS, 10) || 300;
+    // 1. Sleep dynamically matching the Redis lock TTL
+    await step.sleep("wait-for-checkout-expiration", `${ttlSec}s`);
+    // 2. Check the booking payment status in MongoDB
+    const booking = await step.run("check-payment-status", async () => {
+      return await Booking.findById(bookingId);
+    });
+    // 3. If booking doesn't exist or is not paid, release seats!
+    if (!booking || !booking.isPaid) {
+      await step.run("release-abandoned-seats", async () => {
+        // Safe Lua release
+        await releaseSeatLocks(showId, seats, userId);
+        // Mark booking as expired
+        await Booking.findByIdAndUpdate(bookingId, { status: "expired" });
+        // Optional: Trigger socket release event or log
+        console.log(` Seats auto-released for expired booking: ${bookingId}`);
+      });
+    }
+  }
+);
+
+
 // Create an empty array where we'll export future Inngest functions
-export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdate, sendBookingConfirmationEmail];
+export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdate, sendBookingConfirmationEmail,seatLockExpiryWatchdog];
