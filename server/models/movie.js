@@ -12,41 +12,43 @@ const movieSchema = new mongoose.Schema(
         },
         overview: {
             type: String,
-            required: true
+            default: ""
         },
         poster_path: {
             type: String,
-            required: true
+            default: ""
         },
         backdrop_path: {
             type: String,
-            required: true
+            default: ""
         },
         release_date: {
             type: String,
-            required: true
+            default: ""
         },
         original_language: {
-            type: String
+            type: String,
+            default: "en"
         },
         tagline: {
-            type: String
+            type: String,
+            default: ""
         },
         genres: {
             type: Array,
-            required: true
+            default: []
         },
         casts:{
             type: Array,
-            required: true
+            default: []
         },
         vote_average:{
             type: Number,
-            required: true
+            default: 0
         },
         run_time:{
             type: Number,
-            required: true
+            default: 120
         }
     },
     { timestamps: true }

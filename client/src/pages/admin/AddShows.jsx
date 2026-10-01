@@ -193,7 +193,8 @@ const AddShows = () => {
         }
     } catch (error) {
         console.error("Submission Error", error);
-        toast.error("Failed to add show");
+        const serverError = error.response?.data?.message || error.message || "Failed to add show";
+        toast.error(serverError);
     } finally {
         setAddingShow(false);
     }

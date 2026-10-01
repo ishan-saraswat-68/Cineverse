@@ -10,7 +10,9 @@ const connectDB = async () => {
             console.error("MONGODB_URI is missing from environment variables!");
             return;
         }
-        await mongoose.connect(`${uri}/cineverse_v2`);
+        await mongoose.connect(`${uri}/cineverse_v2`, {
+            serverSelectionTimeoutMS: 5000
+        });
         isConnected = true;
         console.log(`MongoDB connected successfully to ${mongoose.connection.host}`);
     } catch (error) {

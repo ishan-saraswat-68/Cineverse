@@ -6,6 +6,7 @@ import Show from "../models/show.js";
 import { set } from "mongoose";
 
 // Workaround for ISP DNS poisoning & edge reset of TMDB API in some regions
+// Restrict to IPv4 addresses because cloud environments like Render do not support outbound IPv6
 const customDnsResolver = new dns.promises.Resolver();
 customDnsResolver.setServers(['8.8.8.8', '1.1.1.1']);
 
@@ -19,13 +20,11 @@ async function getHealthyTmdbIps() {
     }
     const results = [];
     try {
-        const v6 = await customDnsResolver.resolve6('api.themoviedb.org');
-        v6.forEach(ip => results.push({ address: ip, family: 6 }));
-    } catch (e) {}
-    try {
         const v4 = await customDnsResolver.resolve4('api.themoviedb.org');
         v4.forEach(ip => results.push({ address: ip, family: 4 }));
-    } catch (e) {}
+    } catch (e) {
+        console.warn("[TMDB DNS] resolve4 fallback:", e.message);
+    }
 
     // Shuffle pool so requests don't stick to a single reset edge node
     for (let i = results.length - 1; i > 0; i--) {
@@ -42,7 +41,6 @@ async function getHealthyTmdbIps() {
 
 const httpsAgent = new https.Agent({
     keepAlive: true,
-    autoSelectFamily: false,
     lookup: async (hostname, options, callback) => {
         if (hostname === 'api.themoviedb.org') {
             try {
@@ -67,7 +65,7 @@ const tmdbClient = axios.create({
         'Accept-Encoding': 'identity'
     },
     httpsAgent,
-    timeout: 10000
+    timeout: 30000
 });
 
 export const fetchTmdb = async (config, retries = 3, delay = 500) => {
@@ -79,6 +77,9 @@ export const fetchTmdb = async (config, retries = 3, delay = 500) => {
                 err.code === 'ECONNRESET' ||
                 err.code === 'ETIMEDOUT' ||
                 err.code === 'ECONNREFUSED' ||
+                err.code === 'ECONNABORTED' ||
+                err.code === 'ENETUNREACH' ||
+                err.code === 'EHOSTUNREACH' ||
                 (err.message && err.message.includes('socket hang up'))
             );
             if (attempt === retries || !isNetworkError) {
@@ -107,7 +108,7 @@ export const getNowPlayingMovies = async (req, res) => {
         res.json({ success: true, movies: data.results, total_pages: data.total_pages });
     } catch (error) {
         console.error("Get Now Playing Error:", error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 }
 
@@ -132,7 +133,7 @@ export const searchMovies = async (req, res) => {
         res.json({ success: true, movies: data.results, total_pages: data.total_pages });
     } catch (error) {
         console.error("Search Movies Error:", error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 }
 
@@ -154,7 +155,7 @@ export const addShow = async (req, res) => {
         // Base price is the minimum section price
         const baseShowPrice = Math.min(...pricesArray);
         
-        let movie = await Movie.findById(movieID);
+        let movie = await Movie.findById(String(movieID));
         if(!movie){
             const [movieDetailsResponse, movieCreditsResponse] = await Promise.all([
                 fetchTmdb({ url: `/movie/${movieID}` }),
@@ -165,29 +166,30 @@ export const addShow = async (req, res) => {
             const movieCreditsData = movieCreditsResponse.data;
 
             const movieDetails = {
-                _id: movieID,
-                title: movieApiData.title,
-                overview: movieApiData.overview || "",
+                _id: String(movieID),
+                title: movieApiData.title || "Untitled",
+                overview: movieApiData.overview || "No overview available.",
                 poster_path: movieApiData.poster_path || "",
-                backdrop_path: movieApiData.backdrop_path || movieApiData.poster_path,
-                genres: movieApiData.genres.map(genre=>genre.name),
-                casts: movieCreditsData.cast || [],
+                backdrop_path: movieApiData.backdrop_path || movieApiData.poster_path || "",
+                genres: movieApiData.genres?.map(genre => genre.name) || [],
+                casts: movieCreditsData?.cast || [],
                 release_date: movieApiData.release_date || new Date().toISOString().split("T")[0],
                 original_language: movieApiData.original_language || "en",
                 tagline: movieApiData.tagline || "",
                 run_time: movieApiData.runtime || 120,
                 vote_average: movieApiData.vote_average || 0
-            }
+            };
             movie = await Movie.create(movieDetails);
         }
 
         const showsToCreate = [];
         showsInput.forEach(show => {
             const showDate = show.date;
-            show.time.forEach((time) => {
+            const times = Array.isArray(show.time) ? show.time : [show.time];
+            times.forEach((time) => {
                 const dateTimeString = `${showDate}T${time}`;
                 showsToCreate.push({
-                    movie: movieID,
+                    movie: String(movieID),
                     theatre: theatreId,
                     language,
                     format,
@@ -206,8 +208,8 @@ export const addShow = async (req, res) => {
         res.status(201).json({ success: true, message: 'Show added successfully' });
         
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: error.message });
+        console.error("Add Show Error:", error);
+        res.status(500).json({ success: false, message: error.message || "Failed to add show" });
     }
 }
 
