@@ -1,2 +1,13 @@
 node_modules
 .env
+.env.*
+*.env
+server/.env
+client/.env
+!.env.example
+!server/.env.example
+!client/.env.example
+.DS_Store
+dist
+dist-ssr
+

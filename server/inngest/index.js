@@ -182,8 +182,6 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                 <span style="display:inline-block; background: linear-gradient(135deg, #22d3ee 0%, #0284c7 100%); color: #0b0f1a; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 13px; margin: 2px 4px 2px 0;">${seat}</span>
             `).join('');
 
-            const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${booking._id}&color=22d3ee&bgcolor=0e1726`;
-
             const ticketHtml = `
             <!DOCTYPE html>
             <html>
@@ -322,23 +320,17 @@ const sendBookingConfirmationEmail = inngest.createFunction(
                                     </td>
                                 </tr>
 
-                                <!-- QR Code & Entry Instructions -->
+                                <!-- Booking Reference ID -->
                                 <tr>
                                     <td style="padding: 0 28px 26px 28px;">
-                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0e1726; border: 1px dashed rgba(6, 182, 212, 0.4); border-radius: 12px; padding: 14px;">
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0e1726; border: 1px solid #1e293b; border-radius: 12px; padding: 12px 18px;">
                                             <tr>
-                                                <td width="85" valign="middle" align="center">
-                                                    <img src="${qrCodeUrl}" alt="Ticket QR" width="75" height="75" style="display: block; border-radius: 8px;" />
-                                                </td>
-                                                <td valign="middle" style="padding-left: 16px;">
-                                                    <div style="font-size: 12px; font-weight: 700; color: #ffffff; margin-bottom: 3px;">
-                                                        Gate Entry Pass
+                                                <td valign="middle">
+                                                    <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">
+                                                        Booking Reference ID
                                                     </div>
-                                                    <div style="font-size: 11px; color: #94a3b8; line-height: 1.4;">
-                                                        Scan this QR code or show your booking reference at the cinema turnstile for instant admission.
-                                                    </div>
-                                                    <div style="font-size: 10px; font-family: monospace; color: #38bdf8; margin-top: 6px;">
-                                                        REF: ${booking._id}
+                                                    <div style="font-size: 14px; font-family: monospace; font-weight: 700; color: #38bdf8; margin-top: 4px;">
+                                                        ${booking._id}
                                                     </div>
                                                 </td>
                                             </tr>
