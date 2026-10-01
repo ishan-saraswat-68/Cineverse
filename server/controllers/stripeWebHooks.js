@@ -11,21 +11,24 @@ export const stripeWebHooks = async (req, res) => {
     let event;
     const secrets = [
         process.env.STRIPE_WEBHOOK_SECRET,
+        "whsec_SPYreQgG8tYD8Pf4Q3Kt2QwV4WTuRRt5",
         "whsec_80ffcb5a0d386ff2fccff406b5ac37c0b5c24a9c4a0948ece071b36df59fe426"
     ].filter(Boolean);
 
+    let lastError = null;
     for (const secret of secrets) {
         try {
             event = stripeInstance.webhooks.constructEvent(req.body, sig, secret);
             if (event) break;
         } catch (err) {
+            lastError = err;
             // Continue to try next candidate secret
         }
     }
 
     if (!event) {
-        console.error("Webhook signature verification failed for all secrets");
-        return res.status(400).send("Webhook error: signature verification failed");
+        console.error("Webhook signature verification failed for all secrets. Last error:", lastError?.message);
+        return res.status(400).send(`Webhook error: signature verification failed: ${lastError?.message}`);
     }
 
     try {
@@ -39,47 +42,53 @@ export const stripeWebHooks = async (req, res) => {
                 const customerEmail = session.customer_details?.email || session.customer_email;
                 if (bookingId) {
                     const booking = await Booking.findById(bookingId);
-                    if (booking && !booking.isPaid) {
+                    if (booking) {
                         const seats = booking.bookedSeats || [];
                         const targetShowId = showId || booking.show;
 
-                        // 1. Atomic conditional update to MongoDB Show
-                        const query = { _id: targetShowId };
-                        const update = {};
-                        seats.forEach((seat) => {
-                            query[`occupiedSeats.${seat}`] = { $exists: false };
-                            update[`occupiedSeats.${seat}`] = userId || booking.user;
-                        });
-
-                        const updatedShow = await Show.findOneAndUpdate(query, { $set: update }, { new: true });
-                        if (!updatedShow) {
-                            console.error(`🚨 Fatal: Seat collision in MongoDB for booking ${bookingId}`);
-                        }
-
-                        // 2. Mark booking as confirmed
-                        booking.isPaid = true;
-                        booking.paymentLink = "";
-                        booking.status = "confirmed";
-                        await booking.save();
-
-                        // 3. Release Redis temporary lock
-                        await releaseSeatLocks(targetShowId.toString(), seats, userId || booking.user);
-
-                        // 4. Broadcast to all clients via Socket.IO
-                        const io = req.app.get("io");
-                        if (io) {
-                            io.to(`show:${targetShowId}`).emit("seats-confirmed", {
-                                showId: targetShowId,
-                                seats,
+                        if (!booking.isPaid) {
+                            // 1. Atomic conditional update to MongoDB Show
+                            const query = { _id: targetShowId };
+                            const update = {};
+                            seats.forEach((seat) => {
+                                query[`occupiedSeats.${seat}`] = { $exists: false };
+                                update[`occupiedSeats.${seat}`] = userId || booking.user;
                             });
+
+                            const updatedShow = await Show.findOneAndUpdate(query, { $set: update }, { new: true });
+                            if (!updatedShow) {
+                                console.error(`🚨 Fatal: Seat collision in MongoDB for booking ${bookingId}`);
+                            }
+
+                            // 2. Mark booking as confirmed
+                            booking.isPaid = true;
+                            booking.paymentLink = "";
+                            booking.status = "confirmed";
+                            await booking.save();
+
+                            // 3. Release Redis temporary lock
+                            await releaseSeatLocks(targetShowId.toString(), seats, userId || booking.user);
+
+                            // 4. Broadcast to all clients via Socket.IO
+                            const io = req.app.get("io");
+                            if (io) {
+                                io.to(`show:${targetShowId}`).emit("seats-confirmed", {
+                                    showId: targetShowId,
+                                    seats,
+                                });
+                            }
                         }
 
                         // 5. Send Booking Confirmation Email through Inngest
-                        await inngest.send({
-                            name: 'app/show.booked',
-                            data: { bookingId, userId: userId || booking.user, customerEmail }
-                        });
-                        console.log(`✅ Booking ${bookingId} marked as PAID via checkout.session.completed`);
+                        try {
+                            await inngest.send({
+                                name: 'app/show.booked',
+                                data: { bookingId, userId: userId || booking.user, customerEmail }
+                            });
+                            console.log(`✅ Booking ${bookingId} marked as PAID & confirmation dispatched via checkout.session.completed`);
+                        } catch (inngestErr) {
+                            console.error("Failed to send inngest show.booked event:", inngestErr.message);
+                        }
                     }
                 }
                 break;
@@ -98,47 +107,53 @@ export const stripeWebHooks = async (req, res) => {
                 const customerEmail = session?.customer_details?.email || session?.customer_email;
                 if (bookingId) {
                     const booking = await Booking.findById(bookingId);
-                    if (booking && !booking.isPaid) {
+                    if (booking) {
                         const seats = booking.bookedSeats || [];
                         const targetShowId = showId || booking.show;
 
-                        // 1. Atomic conditional update to MongoDB Show
-                        const query = { _id: targetShowId };
-                        const update = {};
-                        seats.forEach((seat) => {
-                            query[`occupiedSeats.${seat}`] = { $exists: false };
-                            update[`occupiedSeats.${seat}`] = userId || booking.user;
-                        });
-
-                        const updatedShow = await Show.findOneAndUpdate(query, { $set: update }, { new: true });
-                        if (!updatedShow) {
-                            console.error(`🚨 Fatal: Seat collision in MongoDB for booking ${bookingId}`);
-                        }
-
-                        // 2. Mark booking as confirmed
-                        booking.isPaid = true;
-                        booking.paymentLink = "";
-                        booking.status = "confirmed";
-                        await booking.save();
-
-                        // 3. Release Redis temporary lock
-                        await releaseSeatLocks(targetShowId.toString(), seats, userId || booking.user);
-
-                        // 4. Broadcast to all clients via Socket.IO
-                        const io = req.app.get("io");
-                        if (io) {
-                            io.to(`show:${targetShowId}`).emit("seats-confirmed", {
-                                showId: targetShowId,
-                                seats,
+                        if (!booking.isPaid) {
+                            // 1. Atomic conditional update to MongoDB Show
+                            const query = { _id: targetShowId };
+                            const update = {};
+                            seats.forEach((seat) => {
+                                query[`occupiedSeats.${seat}`] = { $exists: false };
+                                update[`occupiedSeats.${seat}`] = userId || booking.user;
                             });
+
+                            const updatedShow = await Show.findOneAndUpdate(query, { $set: update }, { new: true });
+                            if (!updatedShow) {
+                                console.error(`🚨 Fatal: Seat collision in MongoDB for booking ${bookingId}`);
+                            }
+
+                            // 2. Mark booking as confirmed
+                            booking.isPaid = true;
+                            booking.paymentLink = "";
+                            booking.status = "confirmed";
+                            await booking.save();
+
+                            // 3. Release Redis temporary lock
+                            await releaseSeatLocks(targetShowId.toString(), seats, userId || booking.user);
+
+                            // 4. Broadcast to all clients via Socket.IO
+                            const io = req.app.get("io");
+                            if (io) {
+                                io.to(`show:${targetShowId}`).emit("seats-confirmed", {
+                                    showId: targetShowId,
+                                    seats,
+                                });
+                            }
                         }
 
                         // 5. Send Booking Confirmation Email through Inngest
-                        await inngest.send({
-                            name: 'app/show.booked',
-                            data: { bookingId, userId: userId || booking.user, customerEmail }
-                        });
-                        console.log(`✅ Booking ${bookingId} marked as PAID via payment_intent.succeeded`);
+                        try {
+                            await inngest.send({
+                                name: 'app/show.booked',
+                                data: { bookingId, userId: userId || booking.user, customerEmail }
+                            });
+                            console.log(`✅ Booking ${bookingId} marked as PAID & confirmation dispatched via payment_intent.succeeded`);
+                        } catch (inngestErr) {
+                            console.error("Failed to send inngest show.booked event:", inngestErr.message);
+                        }
                     }
                 }
                 break;

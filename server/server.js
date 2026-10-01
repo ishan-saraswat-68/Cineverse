@@ -168,6 +168,29 @@ io.on("connection", (socket) => {
 app.get('/', (req, res) => {
   res.send('server is runnign well');
 });
+
+app.get('/api/health-check', (req, res) => {
+  res.json({
+    status: "ok",
+    env: {
+      hasMongoUri: !!process.env.MONGODB_URI,
+      hasClerkSecret: !!process.env.CLERK_SECRET_KEY,
+      hasInngestEventKey: !!process.env.INNGEST_EVENT_KEY,
+      hasInngestSigningKey: !!process.env.INNGEST_SIGNING_KEY,
+      hasStripeSecret: !!process.env.STRIPE_SECRET_KEY,
+      hasStripeWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+      hasRedisUrl: !!process.env.REDIS_URL,
+      smtp: {
+        host: process.env.SMTP_HOST || "MISSING",
+        port: process.env.SMTP_PORT || "MISSING",
+        hasUser: !!process.env.SMTP_USER,
+        hasPass: !!process.env.SMTP_PASS,
+        senderEmail: process.env.SENDER_EMAIL || "MISSING"
+      }
+    }
+  });
+});
+
 // Stripe Webhooks Route (raw body)
 app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebHooks);
 

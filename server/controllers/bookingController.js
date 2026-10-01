@@ -1,5 +1,6 @@
 import Show from "../models/show.js";
 import Booking from "../models/booking.js";
+import User from "../models/User.js";
 import Stripe from "stripe";
 import { acquireSeatLocks, releaseSeatLocks, getShowLocks } from "../config/redis.js";
 import { inngest } from "../inngest/index.js";
@@ -113,7 +114,15 @@ export const createBooking = async (req, res) => {
       quantity: 1,
     }];
 
-    const session = await stripeInstance.checkout.sessions.create({
+    let customerEmail = "";
+    try {
+      const dbUser = await User.findById(userId);
+      if (dbUser?.email) customerEmail = dbUser.email;
+    } catch (e) {
+      console.warn("User lookup in createBooking:", e.message);
+    }
+
+    const sessionParams = {
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
@@ -123,9 +132,16 @@ export const createBooking = async (req, res) => {
         bookingId: booking._id.toString(),
         userId,
         showId,
+        customerEmail,
       },
       expires_at: Math.floor(Date.now() / 1000) + (30 * 60), // Stripe API requires minimum 30 minutes
-    });
+    };
+
+    if (customerEmail) {
+      sessionParams.customer_email = customerEmail;
+    }
+
+    const session = await stripeInstance.checkout.sessions.create(sessionParams);
 
     booking.paymentLink = session.url;
     await booking.save();
