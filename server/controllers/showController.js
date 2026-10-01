@@ -140,7 +140,7 @@ export const searchMovies = async (req, res) => {
 // API to add a new show to the database 
 export const addShow = async (req, res) => {
     try {
-        const { movieID, showsInput, sectionPrices, theatreId, language, format } = req.body;
+        const { movieID, showsInput, sectionPrices, theatreId, language, format, trailerUrl } = req.body;
         
         if (!movieID || !showsInput || !sectionPrices || !theatreId || !language || !format) {
             return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -154,16 +154,29 @@ export const addShow = async (req, res) => {
 
         // Base price is the minimum section price
         const baseShowPrice = Math.min(...pricesArray);
+        const cleanTrailerUrl = typeof trailerUrl === 'string' ? trailerUrl.trim() : '';
         
         let movie = await Movie.findById(String(movieID));
         if(!movie){
-            const [movieDetailsResponse, movieCreditsResponse] = await Promise.all([
+            const [movieDetailsResponse, movieCreditsResponse, movieVideosResponse] = await Promise.all([
                 fetchTmdb({ url: `/movie/${movieID}` }),
-                fetchTmdb({ url: `/movie/${movieID}/credits` })
+                fetchTmdb({ url: `/movie/${movieID}/credits` }),
+                fetchTmdb({ url: `/movie/${movieID}/videos` }).catch(() => ({ data: { results: [] } }))
             ]);
 
             const movieApiData = movieDetailsResponse.data;
             const movieCreditsData = movieCreditsResponse.data;
+            const movieVideos = movieVideosResponse?.data?.results || [];
+
+            // Auto-detect YouTube trailer from TMDB if not provided by admin
+            let defaultTmdbTrailer = "";
+            const officialTrailer = movieVideos.find(v => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser")) || 
+                                   movieVideos.find(v => v.site === "YouTube");
+            if (officialTrailer?.key) {
+                defaultTmdbTrailer = `https://www.youtube.com/watch?v=${officialTrailer.key}`;
+            }
+
+            const chosenTrailer = cleanTrailerUrl || defaultTmdbTrailer;
 
             const movieDetails = {
                 _id: String(movieID),
@@ -177,9 +190,38 @@ export const addShow = async (req, res) => {
                 original_language: movieApiData.original_language || "en",
                 tagline: movieApiData.tagline || "",
                 run_time: movieApiData.runtime || 120,
-                vote_average: movieApiData.vote_average || 0
+                vote_average: movieApiData.vote_average || 0,
+                trailer: chosenTrailer,
+                videoUrl: chosenTrailer
             };
             movie = await Movie.create(movieDetails);
+        } else {
+            // If movie already exists, update trailer if admin provided one, or if movie currently lacks trailer
+            let shouldSave = false;
+            if (cleanTrailerUrl && (movie.trailer !== cleanTrailerUrl || movie.videoUrl !== cleanTrailerUrl)) {
+                movie.trailer = cleanTrailerUrl;
+                movie.videoUrl = cleanTrailerUrl;
+                shouldSave = true;
+            } else if (!movie.trailer && !movie.videoUrl) {
+                try {
+                    const movieVideosResponse = await fetchTmdb({ url: `/movie/${movieID}/videos` }).catch(() => ({ data: { results: [] } }));
+                    const movieVideos = movieVideosResponse?.data?.results || [];
+                    const officialTrailer = movieVideos.find(v => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser")) || 
+                                           movieVideos.find(v => v.site === "YouTube");
+                    if (officialTrailer?.key) {
+                        const ytUrl = `https://www.youtube.com/watch?v=${officialTrailer.key}`;
+                        movie.trailer = ytUrl;
+                        movie.videoUrl = ytUrl;
+                        shouldSave = true;
+                    }
+                } catch (e) {
+                    console.warn("Could not fetch TMDB trailer for existing movie:", e.message);
+                }
+            }
+
+            if (shouldSave) {
+                await movie.save();
+            }
         }
 
         const showsToCreate = [];
@@ -305,3 +347,47 @@ export const getSingleShow = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+// API to get/suggest trailer for a movie (from MongoDB or TMDB)
+export const getMovieTrailer = async (req, res) => {
+    try {
+        const { movieID } = req.params;
+        if (!movieID) {
+            return res.status(400).json({ success: false, message: 'Movie ID is required' });
+        }
+
+        // 1. Check local MongoDB first
+        const dbMovie = await Movie.findById(String(movieID));
+        if (dbMovie && (dbMovie.trailer || dbMovie.videoUrl)) {
+            return res.json({
+                success: true,
+                trailer: dbMovie.trailer || dbMovie.videoUrl,
+                source: "database"
+            });
+        }
+
+        // 2. Fall back to TMDB video results
+        const videoRes = await fetchTmdb({ url: `/movie/${movieID}/videos` }).catch(() => ({ data: { results: [] } }));
+        const videos = videoRes?.data?.results || [];
+        const officialTrailer = videos.find(v => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser")) || 
+                               videos.find(v => v.site === "YouTube");
+
+        if (officialTrailer?.key) {
+            return res.json({
+                success: true,
+                trailer: `https://www.youtube.com/watch?v=${officialTrailer.key}`,
+                source: "tmdb"
+            });
+        }
+
+        return res.json({
+            success: true,
+            trailer: "",
+            source: "none"
+        });
+    } catch (error) {
+        console.error("Get Movie Trailer Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

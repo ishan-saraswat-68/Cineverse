@@ -62,13 +62,15 @@ const MovieDetails = () => {
                 {/* Background Trailer Frame (Constrained to container width) */}
                 <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
                     {(() => {
-                        const trailerUrl = show.movie.trailer || show.movie.videoUrl || 'https://www.youtube.com/watch?v=WpW36ldAqnM';
+                        const trailerUrl = show.movie.trailer || show.movie.videoUrl || '';
                         const getYouTubeId = (url) => {
-                            if (!url) return 'WpW36ldAqnM';
-                            const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-                            return match ? match[1] : 'WpW36ldAqnM';
+                            if (!url) return null;
+                            const clean = String(url).trim();
+                            if (/^[a-zA-Z0-9_-]{11}$/.test(clean)) return clean;
+                            const match = clean.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+                            return match ? match[1] : null;
                         };
-                        const ytId = getYouTubeId(trailerUrl);
+                        const ytId = getYouTubeId(trailerUrl) || 'WpW36ldAqnM';
                         const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
                         return (
                             <div className="absolute inset-0 scale-[1.35] pointer-events-none">

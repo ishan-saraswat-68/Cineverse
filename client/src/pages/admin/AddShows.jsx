@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { CheckIcon, Trash2Icon, StarIcon, Search, X, Loader2, Film } from 'lucide-react'
+import { CheckIcon, Trash2Icon, StarIcon, Search, X, Loader2, Film, Video, Play, ExternalLink, ClipboardPaste, Eye, EyeOff } from 'lucide-react'
 import { dummyShowsData } from '../../assets/assets'
 import Loading from '../../components/Loading'
 import Title from '../../components/admin/Title'
@@ -32,6 +32,58 @@ const AddShows = () => {
     const [hasSearched, setHasSearched] = useState(false)
 
     const [addingShow,setAddingShow] = useState(false);
+
+    // Movie Trailer / Background Video State
+    const [trailerUrl, setTrailerUrl] = useState("")
+    const [isLoadingTrailer, setIsLoadingTrailer] = useState(false)
+    const [showTrailerPreview, setShowTrailerPreview] = useState(false)
+
+    // Helper to extract YouTube video ID from various link formats
+    const getYouTubeVideoId = (url) => {
+        if (!url) return null;
+        const clean = String(url).trim();
+        if (/^[a-zA-Z0-9_-]{11}$/.test(clean)) return clean;
+        const match = clean.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+        return match ? match[1] : null;
+    };
+
+    const trailerVideoId = getYouTubeVideoId(trailerUrl);
+
+    // Auto-fetch existing or suggested TMDB trailer when selecting a movie
+    const handleSelectMovie = async (movie) => {
+        setSelectedMovie(movie.id);
+        setSelectedMovieObj(movie);
+        setShowTrailerPreview(false);
+        try {
+            setIsLoadingTrailer(true);
+            const token = await getToken();
+            const { data } = await axios.get(`/api/show/trailer/${movie.id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (data.success && data.trailer) {
+                setTrailerUrl(data.trailer);
+            } else {
+                setTrailerUrl("");
+            }
+        } catch (error) {
+            console.error("Error auto-fetching trailer:", error);
+            setTrailerUrl("");
+        } finally {
+            setIsLoadingTrailer(false);
+        }
+    };
+
+    const handlePasteTrailer = async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+                setTrailerUrl(text.trim());
+                toast.success("Trailer link pasted!");
+            }
+        } catch (err) {
+            toast.error("Please paste directly into the input box");
+        }
+    };
 
     const fetchNowPlayingMovies = async () => {
         try {
@@ -175,7 +227,8 @@ const AddShows = () => {
             language: selectedLanguage,
             format: selectedFormat,
             showsInput,
-            sectionPrices: numericPrices
+            sectionPrices: numericPrices,
+            trailerUrl: trailerUrl.trim()
         };
 
         const token = await getToken();
@@ -188,6 +241,8 @@ const AddShows = () => {
             setDateTimeSelection({});
             setSelectedMovie(null);
             setSelectedMovieObj(null);
+            setTrailerUrl("");
+            setShowTrailerPreview(false);
         } else {
             toast.error(data.message);
         }
@@ -334,10 +389,7 @@ const AddShows = () => {
                                     className={`relative w-40 min-w-40 cursor-pointer hover:-translate-y-1 transition duration-300 ${
                                         selectedMovie === movie.id ? "ring-2 ring-primary rounded-lg" : "opacity-80 hover:opacity-100"
                                     }`}
-                                    onClick={() => {
-                                        setSelectedMovie(movie.id);
-                                        setSelectedMovieObj(movie);
-                                    }}
+                                    onClick={() => handleSelectMovie(movie)}
                                 >
                                     <div className="relative rounded-lg overflow-hidden bg-gray-900 aspect-[2/3]">
                                         {movie.poster_path ? (
@@ -389,6 +441,119 @@ const AddShows = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Movie Trailer / Background Video Input Bar */}
+                <div className="mt-8 bg-[#111827] border border-gray-700/80 rounded-xl p-5 shadow-lg">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+                                <Video className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <label className="text-sm font-semibold text-white flex items-center gap-2">
+                                    Movie Trailer / Background Video (YouTube URL)
+                                    {isLoadingTrailer && (
+                                        <span className="flex items-center gap-1 text-xs font-normal text-primary">
+                                            <Loader2 className="w-3 h-3 animate-spin" /> Fetching default trailer...
+                                        </span>
+                                    )}
+                                </label>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                    Paste a YouTube video link to display as the dynamic background video on the movie details page.
+                                </p>
+                            </div>
+                        </div>
+
+                        {trailerVideoId && (
+                            <button
+                                type="button"
+                                onClick={() => setShowTrailerPreview(!showTrailerPreview)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg text-xs font-medium text-gray-200 transition cursor-pointer self-start sm:self-auto shrink-0"
+                            >
+                                {showTrailerPreview ? <EyeOff className="w-3.5 h-3.5 text-primary" /> : <Eye className="w-3.5 h-3.5 text-primary" />}
+                                {showTrailerPreview ? "Hide Preview" : "Live Preview"}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Input Field Row */}
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                                <Play className="w-4 h-4 text-red-500 fill-red-500" />
+                            </div>
+                            <input
+                                type="url"
+                                value={trailerUrl}
+                                onChange={(e) => setTrailerUrl(e.target.value)}
+                                placeholder={selectedMovie ? "https://www.youtube.com/watch?v=... or https://youtu.be/..." : "Select a movie above or paste custom YouTube link..."}
+                                className="w-full bg-[#0b0f19] border border-gray-700 focus:border-red-500 pl-10 pr-9 py-2.5 rounded-lg text-sm text-white placeholder-gray-500 outline-none transition"
+                            />
+                            {trailerUrl && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setTrailerUrl(""); setShowTrailerPreview(false); }}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                                    title="Clear URL"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handlePasteTrailer}
+                            className="px-3.5 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium text-gray-200 hover:text-white transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                            title="Paste from clipboard"
+                        >
+                            <ClipboardPaste className="w-3.5 h-3.5 text-primary" />
+                            <span className="hidden sm:inline">Paste</span>
+                        </button>
+                    </div>
+
+                    {/* Live Validation & Embedded Player Preview */}
+                    {trailerUrl.trim() && (
+                        <div className="mt-3">
+                            {trailerVideoId ? (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                                            <CheckIcon className="w-3.5 h-3.5" strokeWidth={3} />
+                                            <span>Valid YouTube Trailer (ID: <code className="bg-emerald-950/60 px-1.5 py-0.5 rounded text-emerald-300 font-mono">{trailerVideoId}</code>)</span>
+                                        </div>
+                                        <a
+                                            href={`https://www.youtube.com/watch?v=${trailerVideoId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-gray-400 hover:text-white transition"
+                                        >
+                                            <span>Open in YouTube</span>
+                                            <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                    </div>
+
+                                    {showTrailerPreview && (
+                                        <div className="relative aspect-video max-w-xl rounded-lg overflow-hidden border border-gray-700 shadow-2xl bg-black mt-2">
+                                            <iframe
+                                                src={`https://www.youtube.com/embed/${trailerVideoId}?autoplay=1&mute=1&loop=1&playlist=${trailerVideoId}&modestbranding=1&rel=0`}
+                                                className="w-full h-full"
+                                                allow="autoplay; encrypted-media; fullscreen"
+                                                allowFullScreen
+                                                title="Trailer Preview"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                                    <span>⚠️</span>
+                                    <span>Please enter a valid YouTube video URL (e.g., https://www.youtube.com/watch?v=... or https://youtu.be/...)</span>
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {/* Theatre, Language, and Format Selection */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">

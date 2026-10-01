@@ -49,6 +49,14 @@ const movieSchema = new mongoose.Schema(
         run_time:{
             type: Number,
             default: 120
+        },
+        trailer: {
+            type: String,
+            default: ""
+        },
+        videoUrl: {
+            type: String,
+            default: ""
         }
     },
     { timestamps: true }
